@@ -77,6 +77,9 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+.virtual_documents/
 
 # IPython
 profile_default/
@@ -205,3 +208,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Logs
+src/logs/
+experiments/logs/
+experiments/results/
