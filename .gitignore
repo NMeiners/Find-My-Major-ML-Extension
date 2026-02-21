@@ -209,6 +209,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Local data (re-fetchable from O*NET API) — root-level only
+/data/
+
 # Logs
 src/logs/
 experiments/logs/
