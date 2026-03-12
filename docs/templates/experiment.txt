@@ -1,0 +1,162 @@
+# Experiment Configuration Template
+
+# ---------------------------------
+
+# This file defines parameters for a single training experiment.
+
+# It is loaded by the training program via CLI, for example:
+
+#
+
+# python train.py --experiment configs/experiment.txt
+
+#
+
+# All lists must use JSON-style arrays.
+
+# Strings should be quoted where appropriate.
+
+# ============================================================
+
+# Experiment Metadata
+
+# ============================================================
+
+experiment_id = "exp_001"
+description = "Baseline model comparison using core RIASEC features"
+author = "team_member"
+date_created = "YYYY-MM-DD"
+
+# ============================================================
+
+# Dataset Configuration
+
+# ============================================================
+
+dataset_name = "riasec_kaggle"
+dataset_path = "data/raw/data.csv"
+
+train_split = 0.70
+validation_split = 0.15
+test_split = 0.15
+
+shuffle_data = true
+random_seed = 42
+
+# ============================================================
+
+# Feature Configuration
+
+# ============================================================
+
+# Input feature columns (X)
+
+x_features = [
+"realistic",
+"investigative",
+"artistic",
+"social",
+"enterprising",
+"conventional"
+]
+
+# Target output columns (Y)
+
+y_features = [
+"career_label"
+]
+
+# Optional additional engineered features
+
+engineered_features = [
+"riasec_variance",
+"riasec_dominant_type"
+]
+
+# ============================================================
+
+# Model Selection
+
+# ============================================================
+
+# List of models to evaluate in this experiment
+
+models = [
+"logistic_regression",
+"random_forest",
+"gradient_boosting"
+]
+
+# ============================================================
+
+# Model Hyperparameters
+
+# ============================================================
+
+# Logistic Regression
+
+logistic_regression.max_iter = 1000
+logistic_regression.solver = "lbfgs"
+
+# Random Forest
+
+random_forest.n_estimators = 200
+random_forest.max_depth = 10
+
+# Gradient Boosting
+
+gradient_boosting.n_estimators = 100
+gradient_boosting.learning_rate = 0.1
+
+# ============================================================
+
+# Training Configuration
+
+# ============================================================
+
+cross_validation_folds = 5
+normalize_features = true
+standardize_features = true
+
+# ============================================================
+
+# Evaluation Metrics
+
+# ============================================================
+
+metrics = [
+"ndcg_at_k",
+"precision_at_k",
+"accuracy"
+]
+
+top_k = 5
+
+# ============================================================
+
+# Output Configuration
+
+# ============================================================
+
+save_trained_models = true
+save_predictions = true
+save_metrics = true
+
+output_directory = "experiments/results/exp_001"
+
+# ============================================================
+
+# Export Configuration
+
+# ============================================================
+
+export_inference_model = true
+export_format = "onnx"
+
+# ============================================================
+
+# Notes
+
+# ============================================================
+
+notes = "Baseline comparison of core classical ML models using normalized RIASEC features."
