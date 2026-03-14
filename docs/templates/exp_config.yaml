@@ -1,0 +1,152 @@
+# ============================================================
+# Experiment Metadata
+# ============================================================
+
+experiment:
+  id: exp_001
+  description: Baseline model comparison using RIASEC features
+  author: team_member
+  created: YYYY-MM-DD
+  random_seed: 42
+
+# ============================================================
+# Dataset Matrix
+# Each row = one dataset configuration
+# ============================================================
+
+datasets:
+
+  # Row 1
+  - name: riasec_single_dataset
+    train_path: data/raw/data.csv
+    test_path: null
+
+    split:
+      train: 0.70
+      validation: 0.15
+      test: 0.15
+
+    shuffle: true
+
+  # Row 2
+  - name: kaggle_train_test
+    train_path: data/raw/train.csv
+    test_path: data/raw/test.csv
+
+    split: null
+    shuffle: false
+
+
+# ============================================================
+# Model Matrix
+# Each row = one model training configuration
+# ============================================================
+
+models:
+
+  # Row 1
+  - model: logistic_regression
+
+    parameters:
+      max_iter: 1000
+      solver: lbfgs
+
+    x_features:
+      - realistic
+      - investigative
+      - artistic
+      - social
+      - enterprising
+      - conventional
+
+    y_features:
+      - career_label
+
+  # Row 2
+  - model: random_forest
+
+    parameters:
+      n_estimators: 200
+      max_depth: 10
+
+    x_features:
+      - realistic
+      - investigative
+      - artistic
+      - social
+      - enterprising
+      - conventional
+      - riasec_variance
+
+    y_features:
+      - career_label
+
+  # Row 3
+  - model: gradient_boosting
+
+    parameters:
+      n_estimators: 100
+      learning_rate: 0.1
+
+    x_features:
+      - realistic
+      - investigative
+      - artistic
+      - social
+      - enterprising
+      - conventional
+
+    y_features:
+      - career_label
+
+# ============================================================
+# Training Configuration
+# ============================================================
+
+training:
+
+  cross_validation_folds: 5
+  normalize_features: true
+  standardize_features: true
+  parallel_jobs: 4
+
+# ============================================================
+# Evaluation
+# ============================================================
+
+evaluation:
+
+  metrics:
+    - ndcg_at_k
+    - precision_at_k
+    - accuracy
+
+  top_k: 5
+
+# ============================================================
+# Output
+# ============================================================
+
+output:
+
+  directory: experiments/results/exp_001
+
+  save_models: true
+  save_predictions: true
+  save_metrics: true
+
+# ============================================================
+# Export
+# ============================================================
+
+export:
+
+  export_inference_model: true
+  format: onnx
+
+# ============================================================
+# Notes
+# ============================================================
+
+notes: |
+  Baseline comparison of classical ML models using RIASEC features.
