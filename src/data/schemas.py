@@ -3,8 +3,9 @@ File: schemas.py
 Path: src/data/schemas.py
 
 Purpose:
-  Defines core data structures for O*NET Interest Profiler questions.
-  Provides validated dataclasses for questions, answer options, and question sets
+  Defines core data structures for O*NET Interest Profiler questions and
+  processed training data. Provides validated dataclasses for questions,
+  answer options, question sets, training records, and career profiles
   used throughout the project.
 
 Original Author(s):
@@ -15,16 +16,19 @@ AI Tools Used:
 
 Editors:
   - Claude Code (2026-02-16) — initial implementation
+  - Claude Code (2026-03-14) — added TrainingRecord, CareerProfile,
+    BROAD_CATEGORIES, and CATEGORY_ALIASES for processed dataset schema
 
 Last Editor:
   - Claude Code
 
 Last Edit Date:
-  2026-02-16
+  2026-03-14
 
 Assumptions & Constraints:
   - RIASEC areas are fixed to the 6 standard Holland codes
   - Answer option values are always 1-5 (Likert scale)
+  - Normalized RIASEC scores are in [0.0, 1.0]
   - No PII or demographic data
 
 Related Docs:
@@ -44,6 +48,25 @@ RIASEC_AREAS: tuple[str, ...] = (
     "Enterprising",
     "Conventional",
 )
+
+BROAD_CATEGORIES: tuple[str, ...] = (
+    "Arts, Communications & Humanities",
+    "Business & Finance",
+    "Education",
+    "Engineering, Manufacturing & Construction",
+    "Healthcare & Medicine",
+    "Law & Public Policy",
+    "Psychology & Human Services",
+    "Science & Mathematics",
+    "Social Sciences",
+    "Technology & IT",
+)
+
+# Maps legacy source dataset category names to canonical BROAD_CATEGORIES values.
+# Applied by the data loader before validation runs.
+CATEGORY_ALIASES: dict[str, str] = {
+    "Engineering & Architecture": "Engineering, Manufacturing & Construction",
+}
 
 
 @dataclass(frozen=True)
@@ -140,3 +163,125 @@ class QuestionSet:
     answer_options: list[AnswerOption]
     total: int
     dataset_id: str
+
+
+_RIASEC_FLOAT_FIELDS: tuple[str, ...] = (
+    "realistic",
+    "investigative",
+    "artistic",
+    "social",
+    "enterprising",
+    "conventional",
+)
+
+
+@dataclass(frozen=True)
+class TrainingRecord:
+    """
+    Name: TrainingRecord
+
+    Purpose:
+      Represents a single respondent row from the processed Kaggle RIASEC
+      dataset. Holds normalized RIASEC scores and the assigned career
+      broad category used as the training label.
+
+    Inputs:
+      - realistic: float — normalized R score in [0.0, 1.0]
+      - investigative: float — normalized I score in [0.0, 1.0]
+      - artistic: float — normalized A score in [0.0, 1.0]
+      - social: float — normalized S score in [0.0, 1.0]
+      - enterprising: float — normalized E score in [0.0, 1.0]
+      - conventional: float — normalized C score in [0.0, 1.0]
+      - broad_category: str — canonical career category label
+
+    Outputs:
+      - N/A (data container)
+
+    Raises / Errors:
+      - ValueError: if any RIASEC score is outside [0.0, 1.0]
+      - ValueError: if broad_category is not in BROAD_CATEGORIES
+
+    Notes:
+      - Frozen dataclass to prevent accidental mutation
+      - Category aliases must be resolved before construction (see CATEGORY_ALIASES)
+      - Demographic fields are intentionally excluded per data governance policy
+    """
+
+    realistic: float
+    investigative: float
+    artistic: float
+    social: float
+    enterprising: float
+    conventional: float
+    broad_category: str
+
+    def __post_init__(self) -> None:
+        for field in _RIASEC_FLOAT_FIELDS:
+            val = getattr(self, field)
+            if not 0.0 <= val <= 1.0:
+                raise ValueError(
+                    f"TrainingRecord.{field} must be in [0.0, 1.0], got {val}"
+                )
+        if self.broad_category not in BROAD_CATEGORIES:
+            raise ValueError(
+                f"broad_category must be one of {BROAD_CATEGORIES}, "
+                f"got '{self.broad_category}'"
+            )
+
+
+@dataclass(frozen=True)
+class CareerProfile:
+    """
+    Name: CareerProfile
+
+    Purpose:
+      Represents a single career entry from the master careers dataset.
+      Holds the career's O*NET code, title, normalized RIASEC profile,
+      and broad category used for similarity ranking.
+
+    Inputs:
+      - code: str — O*NET-SOC code (e.g., "11-1011.00")
+      - title: str — career title
+      - realistic: float — normalized R score in [0.0, 1.0]
+      - investigative: float — normalized I score in [0.0, 1.0]
+      - artistic: float — normalized A score in [0.0, 1.0]
+      - social: float — normalized S score in [0.0, 1.0]
+      - enterprising: float — normalized E score in [0.0, 1.0]
+      - conventional: float — normalized C score in [0.0, 1.0]
+      - broad_category: str — canonical career category label
+
+    Outputs:
+      - N/A (data container)
+
+    Raises / Errors:
+      - ValueError: if any RIASEC score is outside [0.0, 1.0]
+      - ValueError: if broad_category is not in BROAD_CATEGORIES
+
+    Notes:
+      - Frozen dataclass to prevent accidental mutation
+      - RIASEC scores are on the same [0.0, 1.0] scale as TrainingRecord
+        to allow direct cosine similarity comparison
+    """
+
+    code: str
+    title: str
+    realistic: float
+    investigative: float
+    artistic: float
+    social: float
+    enterprising: float
+    conventional: float
+    broad_category: str
+
+    def __post_init__(self) -> None:
+        for field in _RIASEC_FLOAT_FIELDS:
+            val = getattr(self, field)
+            if not 0.0 <= val <= 1.0:
+                raise ValueError(
+                    f"CareerProfile.{field} must be in [0.0, 1.0], got {val}"
+                )
+        if self.broad_category not in BROAD_CATEGORIES:
+            raise ValueError(
+                f"broad_category must be one of {BROAD_CATEGORIES}, "
+                f"got '{self.broad_category}'"
+            )
