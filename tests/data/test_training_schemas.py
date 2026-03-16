@@ -14,12 +14,14 @@ AI Tools Used:
 
 Editors:
   - Claude Code (2026-03-14) — initial implementation
+  - Claude Code (2026-03-16) — renamed broad_category → career_category to
+    align with Nate's CSV file structure
 
 Last Editor:
   - Claude Code
 
 Last Edit Date:
-  2026-03-14
+  2026-03-16
 
 Assumptions & Constraints:
   - Tests run with pytest from the repository root
@@ -111,25 +113,25 @@ class TestTrainingRecord:
     """Tests for the TrainingRecord dataclass."""
 
     def test_valid_construction(self):
-        record = TrainingRecord(**_VALID_RIASEC, broad_category=_VALID_CATEGORY)
+        record = TrainingRecord(**_VALID_RIASEC, career_category=_VALID_CATEGORY)
         assert record.realistic == 0.5
-        assert record.broad_category == _VALID_CATEGORY
+        assert record.career_category == _VALID_CATEGORY
 
     @pytest.mark.parametrize("category", BROAD_CATEGORIES)
     def test_all_valid_categories_accepted(self, category):
-        record = TrainingRecord(**_VALID_RIASEC, broad_category=category)
-        assert record.broad_category == category
+        record = TrainingRecord(**_VALID_RIASEC, career_category=category)
+        assert record.career_category == category
 
     def test_invalid_category_raises(self):
-        with pytest.raises(ValueError, match="broad_category must be one of"):
-            TrainingRecord(**_VALID_RIASEC, broad_category="Underwater Basket Weaving")
+        with pytest.raises(ValueError, match="career_category must be one of"):
+            TrainingRecord(**_VALID_RIASEC, career_category="Underwater Basket Weaving")
 
     @pytest.mark.parametrize("field", [
         "realistic", "investigative", "artistic",
         "social", "enterprising", "conventional",
     ])
     def test_score_below_zero_raises(self, field):
-        kwargs = {**_VALID_RIASEC, field: -0.01, "broad_category": _VALID_CATEGORY}
+        kwargs = {**_VALID_RIASEC, field: -0.01, "career_category": _VALID_CATEGORY}
         with pytest.raises(ValueError, match="must be in \\[0.0, 1.0\\]"):
             TrainingRecord(**kwargs)
 
@@ -138,21 +140,21 @@ class TestTrainingRecord:
         "social", "enterprising", "conventional",
     ])
     def test_score_above_one_raises(self, field):
-        kwargs = {**_VALID_RIASEC, field: 1.01, "broad_category": _VALID_CATEGORY}
+        kwargs = {**_VALID_RIASEC, field: 1.01, "career_category": _VALID_CATEGORY}
         with pytest.raises(ValueError, match="must be in \\[0.0, 1.0\\]"):
             TrainingRecord(**kwargs)
 
     def test_boundary_scores_accepted(self):
         boundary = {k: 0.0 for k in _VALID_RIASEC}
-        record = TrainingRecord(**boundary, broad_category=_VALID_CATEGORY)
+        record = TrainingRecord(**boundary, career_category=_VALID_CATEGORY)
         assert record.realistic == 0.0
 
         boundary_high = {k: 1.0 for k in _VALID_RIASEC}
-        record_high = TrainingRecord(**boundary_high, broad_category=_VALID_CATEGORY)
+        record_high = TrainingRecord(**boundary_high, career_category=_VALID_CATEGORY)
         assert record_high.conventional == 1.0
 
     def test_frozen(self):
-        record = TrainingRecord(**_VALID_RIASEC, broad_category=_VALID_CATEGORY)
+        record = TrainingRecord(**_VALID_RIASEC, career_category=_VALID_CATEGORY)
         with pytest.raises(AttributeError):
             record.realistic = 0.9
 
@@ -170,7 +172,7 @@ class TestCareerProfile:
             "code": "11-1011.00",
             "title": "Chief Executives",
             **_VALID_RIASEC,
-            "broad_category": _VALID_CATEGORY,
+            "career_category": _VALID_CATEGORY,
             **overrides,
         }
         return CareerProfile(**kwargs)
@@ -183,12 +185,12 @@ class TestCareerProfile:
 
     @pytest.mark.parametrize("category", BROAD_CATEGORIES)
     def test_all_valid_categories_accepted(self, category):
-        profile = self._make(broad_category=category)
-        assert profile.broad_category == category
+        profile = self._make(career_category=category)
+        assert profile.career_category == category
 
     def test_invalid_category_raises(self):
-        with pytest.raises(ValueError, match="broad_category must be one of"):
-            self._make(broad_category="Unknown Field")
+        with pytest.raises(ValueError, match="career_category must be one of"):
+            self._make(career_category="Unknown Field")
 
     @pytest.mark.parametrize("field", [
         "realistic", "investigative", "artistic",

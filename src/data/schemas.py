@@ -192,14 +192,14 @@ class TrainingRecord:
       - social: float — normalized S score in [0.0, 1.0]
       - enterprising: float — normalized E score in [0.0, 1.0]
       - conventional: float — normalized C score in [0.0, 1.0]
-      - broad_category: str — canonical career category label
+      - career_category: str — canonical career category label
 
     Outputs:
       - N/A (data container)
 
     Raises / Errors:
       - ValueError: if any RIASEC score is outside [0.0, 1.0]
-      - ValueError: if broad_category is not in BROAD_CATEGORIES
+      - ValueError: if career_category is not in BROAD_CATEGORIES
 
     Notes:
       - Frozen dataclass to prevent accidental mutation
@@ -213,7 +213,7 @@ class TrainingRecord:
     social: float
     enterprising: float
     conventional: float
-    broad_category: str
+    career_category: str
 
     def __post_init__(self) -> None:
         for field in _RIASEC_FLOAT_FIELDS:
@@ -222,10 +222,10 @@ class TrainingRecord:
                 raise ValueError(
                     f"TrainingRecord.{field} must be in [0.0, 1.0], got {val}"
                 )
-        if self.broad_category not in BROAD_CATEGORIES:
+        if self.career_category not in BROAD_CATEGORIES:
             raise ValueError(
-                f"broad_category must be one of {BROAD_CATEGORIES}, "
-                f"got '{self.broad_category}'"
+                f"career_category must be one of {BROAD_CATEGORIES}, "
+                f"got '{self.career_category}'"
             )
 
 
@@ -248,14 +248,14 @@ class CareerProfile:
       - social: float — normalized S score in [0.0, 1.0]
       - enterprising: float — normalized E score in [0.0, 1.0]
       - conventional: float — normalized C score in [0.0, 1.0]
-      - broad_category: str — canonical career category label
+      - career_category: str — canonical career category label
 
     Outputs:
       - N/A (data container)
 
     Raises / Errors:
       - ValueError: if any RIASEC score is outside [0.0, 1.0]
-      - ValueError: if broad_category is not in BROAD_CATEGORIES
+      - ValueError: if career_category is not in BROAD_CATEGORIES
 
     Notes:
       - Frozen dataclass to prevent accidental mutation
@@ -271,7 +271,7 @@ class CareerProfile:
     social: float
     enterprising: float
     conventional: float
-    broad_category: str
+    career_category: str
 
     def __post_init__(self) -> None:
         for field in _RIASEC_FLOAT_FIELDS:
@@ -280,8 +280,8 @@ class CareerProfile:
                 raise ValueError(
                     f"CareerProfile.{field} must be in [0.0, 1.0], got {val}"
                 )
-        if self.broad_category not in BROAD_CATEGORIES:
+        if self.career_category not in BROAD_CATEGORIES:
             raise ValueError(
-                f"broad_category must be one of {BROAD_CATEGORIES}, "
-                f"got '{self.broad_category}'"
+                f"career_category must be one of {BROAD_CATEGORIES}, "
+                f"got '{self.career_category}'"
             )

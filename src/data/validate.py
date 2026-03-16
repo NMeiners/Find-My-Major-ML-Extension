@@ -15,15 +15,17 @@ AI Tools Used:
 
 Editors:
   - Claude Code (2026-03-14) — initial implementation
+  - Claude Code (2026-03-16) — renamed Broad_Category → Career Category to
+    align with Nate's CSV file structure
 
 Last Editor:
   - Claude Code
 
 Last Edit Date:
-  2026-03-14
+  2026-03-16
 
 Assumptions & Constraints:
-  - Validation runs on raw column names (before loader renames them)
+  - Validation runs on raw column names as they appear in the CSV files
   - Category alias resolution (CATEGORY_ALIASES) is the loader's responsibility
   - Training data validator accepts both canonical categories and known aliases
   - Career data validator requires canonical categories only
@@ -40,7 +42,7 @@ import pandas as pd
 
 from src.data.schemas import BROAD_CATEGORIES, CATEGORY_ALIASES
 
-# Raw column names as they appear in the processed Excel files
+# Raw column names as they appear in the CSV files
 _TRAINING_RIASEC_COLS: tuple[str, ...] = (
     "R normalized",
     "I normalized",
@@ -49,7 +51,7 @@ _TRAINING_RIASEC_COLS: tuple[str, ...] = (
     "E normalized",
     "C normalized",
 )
-_TRAINING_REQUIRED_COLS: tuple[str, ...] = _TRAINING_RIASEC_COLS + ("Broad_Category",)
+_TRAINING_REQUIRED_COLS: tuple[str, ...] = _TRAINING_RIASEC_COLS + ("Career Category",)
 
 _CAREER_RIASEC_COLS: tuple[str, ...] = (
     "Realistic",
@@ -62,7 +64,7 @@ _CAREER_RIASEC_COLS: tuple[str, ...] = (
 _CAREER_REQUIRED_COLS: tuple[str, ...] = _CAREER_RIASEC_COLS + (
     "O*NET-SOC Code",
     "Title",
-    "Broad_Category",
+    "Career Category",
 )
 
 # Training data may contain alias values before loader normalization
@@ -77,7 +79,7 @@ def validate_training_dataframe(df: pd.DataFrame) -> list[str]:
 
     Purpose:
       Validates a DataFrame of training records loaded from the processed
-      Kaggle RIASEC Excel file. Returns a list of human-readable error
+      Kaggle RIASEC CSV file. Returns a list of human-readable error
       messages; an empty list means the DataFrame passed all checks.
 
     Inputs:
@@ -114,10 +116,10 @@ def validate_training_dataframe(df: pd.DataFrame) -> list[str]:
                 f"Column '{col}' has {out_of_range} value(s) outside [0.0, 1.0]"
             )
 
-    invalid_mask = ~df["Broad_Category"].isin(_VALID_TRAINING_CATEGORIES)
+    invalid_mask = ~df["Career Category"].isin(_VALID_TRAINING_CATEGORIES)
     if invalid_mask.any():
-        bad = sorted(df.loc[invalid_mask, "Broad_Category"].unique().tolist())
-        errors.append(f"Unknown Broad_Category value(s) in training data: {bad}")
+        bad = sorted(df.loc[invalid_mask, "Career Category"].unique().tolist())
+        errors.append(f"Unknown Career Category value(s) in training data: {bad}")
 
     return errors
 
@@ -128,7 +130,7 @@ def validate_career_dataframe(df: pd.DataFrame) -> list[str]:
 
     Purpose:
       Validates a DataFrame of career profiles loaded from the master careers
-      Excel file. Returns a list of human-readable error messages; an empty
+      CSV file. Returns a list of human-readable error messages; an empty
       list means the DataFrame passed all checks.
 
     Inputs:
@@ -169,9 +171,9 @@ def validate_career_dataframe(df: pd.DataFrame) -> list[str]:
     if duplicate_count > 0:
         errors.append(f"Found {duplicate_count} duplicate O*NET-SOC Code(s)")
 
-    invalid_mask = ~df["Broad_Category"].isin(BROAD_CATEGORIES)
+    invalid_mask = ~df["Career Category"].isin(BROAD_CATEGORIES)
     if invalid_mask.any():
-        bad = sorted(df.loc[invalid_mask, "Broad_Category"].unique().tolist())
-        errors.append(f"Unknown Broad_Category value(s) in career data: {bad}")
+        bad = sorted(df.loc[invalid_mask, "Career Category"].unique().tolist())
+        errors.append(f"Unknown Career Category value(s) in career data: {bad}")
 
     return errors

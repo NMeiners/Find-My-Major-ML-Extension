@@ -14,12 +14,14 @@ AI Tools Used:
 
 Editors:
   - Claude Code (2026-03-14) — initial implementation
+  - Claude Code (2026-03-16) — renamed Broad_Category → Career Category to
+    align with Nate's CSV file structure
 
 Last Editor:
   - Claude Code
 
 Last Edit Date:
-  2026-03-14
+  2026-03-16
 
 Assumptions & Constraints:
   - Tests run with pytest from the repository root
@@ -51,7 +53,7 @@ def _make_training_df(**overrides) -> pd.DataFrame:
         "S normalized": 0.7,
         "E normalized": 0.4,
         "C normalized": 0.2,
-        "Broad_Category": "Education",
+        "Career Category": "Education",
     }
     row.update(overrides)
     return pd.DataFrame([row])
@@ -68,7 +70,7 @@ def _make_career_df(**overrides) -> pd.DataFrame:
         "Social": 0.51,
         "Enterprising": 0.99,
         "Conventional": 0.71,
-        "Broad_Category": "Business & Finance",
+        "Career Category": "Business & Finance",
     }
     row.update(overrides)
     return pd.DataFrame([row])
@@ -86,12 +88,12 @@ class TestValidateTrainingDataframe:
         assert validate_training_dataframe(_make_training_df()) == []
 
     def test_accepts_canonical_category(self):
-        df = _make_training_df(**{"Broad_Category": "Healthcare & Medicine"})
+        df = _make_training_df(**{"Career Category": "Healthcare & Medicine"})
         assert validate_training_dataframe(df) == []
 
     def test_accepts_category_alias(self):
         # "Engineering & Architecture" is a known alias; loader maps it later
-        df = _make_training_df(**{"Broad_Category": "Engineering & Architecture"})
+        df = _make_training_df(**{"Career Category": "Engineering & Architecture"})
         assert validate_training_dataframe(df) == []
 
     def test_missing_column_returns_error(self):
@@ -108,9 +110,9 @@ class TestValidateTrainingDataframe:
 
     def test_null_category_returns_error(self):
         df = _make_training_df()
-        df.loc[0, "Broad_Category"] = None
+        df.loc[0, "Career Category"] = None
         errors = validate_training_dataframe(df)
-        assert any("Broad_Category" in e and "null" in e for e in errors)
+        assert any("Career Category" in e and "null" in e for e in errors)
 
     def test_riasec_below_zero_returns_error(self):
         df = _make_training_df(**{"I normalized": -0.01})
@@ -123,12 +125,12 @@ class TestValidateTrainingDataframe:
         assert any("C normalized" in e and "outside [0.0, 1.0]" in e for e in errors)
 
     def test_unknown_category_returns_error(self):
-        df = _make_training_df(**{"Broad_Category": "Underwater Basket Weaving"})
+        df = _make_training_df(**{"Career Category": "Underwater Basket Weaving"})
         errors = validate_training_dataframe(df)
-        assert any("Unknown Broad_Category" in e for e in errors)
+        assert any("Unknown Career Category" in e for e in errors)
 
     def test_multiple_errors_all_reported(self):
-        df = _make_training_df(**{"R normalized": -1.0, "Broad_Category": "BadCat"})
+        df = _make_training_df(**{"R normalized": -1.0, "Career Category": "BadCat"})
         errors = validate_training_dataframe(df)
         assert len(errors) >= 2
 
@@ -187,13 +189,13 @@ class TestValidateCareerDataframe:
         assert validate_career_dataframe(df) == []
 
     def test_unknown_category_returns_error(self):
-        df = _make_career_df(**{"Broad_Category": "Engineering & Architecture"})
+        df = _make_career_df(**{"Career Category": "Engineering & Architecture"})
         errors = validate_career_dataframe(df)
-        assert any("Unknown Broad_Category" in e for e in errors)
+        assert any("Unknown Career Category" in e for e in errors)
 
     def test_alias_not_accepted_in_career_data(self):
         # Career data must use canonical names; aliases are a training-data concern
-        df = _make_career_df(**{"Broad_Category": "Engineering & Architecture"})
+        df = _make_career_df(**{"Career Category": "Engineering & Architecture"})
         errors = validate_career_dataframe(df)
         assert len(errors) > 0
 
