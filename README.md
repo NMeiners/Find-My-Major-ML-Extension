@@ -81,6 +81,42 @@ This means the project has structure and standards in place, while core model/ev
 `-- tests/
 ```
 
+## How to Run
+
+### Prerequisites
+
+- Python 3.11+
+- Dependencies: `pip install -r requirements.txt`
+
+### Running Experiments
+
+1. Create or modify a configuration file in `experiments/config/` (see `docs/templates/exp_config.yaml` for the full structure)
+2. Run the training pipeline:
+
+```bash
+python main.py experiments/config/exp_config.yaml
+```
+
+This will:
+- Load the experiment configuration
+- Generate a unique run ID (format: `<experiment_id>_<YYYYMMDD_HHMMSS>`)
+- Create an output directory under `experiments/results/`
+- Execute the training pipeline (when implemented)
+
+### Development Setup
+
+For development, use the provided dev container (`.devcontainer/`) or install dependencies locally:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run tests with:
+
+```bash
+pytest
+```
+
 ## Working Agreement (Important)
 
 Before contributing code, read:
