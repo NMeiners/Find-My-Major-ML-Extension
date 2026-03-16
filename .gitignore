@@ -216,3 +216,5 @@ __marimo__/
 src/logs/
 experiments/logs/
 experiments/results/
+
+models/*.joblib
