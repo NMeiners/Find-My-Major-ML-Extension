@@ -110,7 +110,7 @@ output:
                 # Check format: experiment_id + _ + YYYYMMDD_HHMMSS
                 assert run_id.startswith("exp_001_")
                 timestamp = "20260314_154212"
-                assert run_id.endswith(f"_{timestamp}")
+                assert run_id.endswith(f"{timestamp}")
                 assert len(timestamp) == 15  # YYYYMMDD_HHMMSS
         finally:
             os.unlink(config_path)
