@@ -158,6 +158,7 @@ evaluation:
     - accuracy
 
   top_k: 5
+  max_test_samples: 1
 
 # ============================================================
 # Output
