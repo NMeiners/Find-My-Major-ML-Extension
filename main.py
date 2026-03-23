@@ -38,8 +38,14 @@ Related Docs:
 import argparse
 import os
 import sys
+import random
+from pathlib import Path
+
 import pandas as pd
 from src.config.config_loader import load_config
+from src.data.loader import load_training_records, split_training_records
+from src.evaluation import Dataset, evaluate_experiment
+from src.evaluation.reporting import save_results_to_file
 from src.models import MODEL_REGISTRY
 
 
@@ -84,64 +90,123 @@ def main():
         print(f"Error loading configuration: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Create output directory
+    # Create output directory (per docs: experiments/results/<experiment_id>/<run_id>/)
+    experiment_id = config['experiment']['id']
     base_dir = config['output']['directory']
     run_id = config['run']['run_id']
-    output_dir = os.path.join(base_dir, run_id)
-    os.makedirs(output_dir, exist_ok=True)
+
+    # Ensure user output path exists
+    output_dir = Path(base_dir) / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Configuration loaded successfully. Run ID: {run_id}")
     print(f"Output directory created: {output_dir}")
 
-    # Load training data from the first dataset entry in config
-    dataset_cfg = config['datasets'][0]
-    train_df = pd.read_csv(dataset_cfg['train_path'])
+    # Determine O*NET database path and load it for job ranking
+    onet_db_path = config.get('onet_db_path')
+    if not onet_db_path:
+        raise KeyError("Configuration missing 'onet_db_path'.")
 
-    # Load test data and apply column mapping if specified
-    test_df = None
-    if dataset_cfg.get('test_path'):
-        test_df = pd.read_csv(dataset_cfg['test_path'])
-        col_mapping = dataset_cfg.get('test_column_mapping')
-        if col_mapping:
-            test_df = test_df.rename(columns=col_mapping)
+    if not os.path.isfile(onet_db_path):
+        raise FileNotFoundError(f"O*NET DB file not found: {onet_db_path}")
 
-    # Load O*NET career database for job ranking (separate from training data)
-    onet_db = pd.read_csv(config['onet_db_path'])
+    onet_db = pd.read_csv(onet_db_path)
 
-    top_n_jobs = config['evaluation']['top_k']
+    # Determine the union of all model feature columns for dataset construction
+    model_feature_columns = sorted({
+        feature
+        for model_cfg in config.get('models', [])
+        for feature in model_cfg.get('x_features', [])
+    })
 
-    # Train all models defined in the config
-    trained_models = []
+    # Label column for all datasets is expected to be aligned with models' y_features
+    label_column = config['models'][0]['y_features'][0] if config.get('models') else 'Career Category'
+
+    # Build Dataset objects from config
+    datasets = []
+
+    for dataset_cfg in config.get('datasets', []):
+        train_path = dataset_cfg.get('train_path')
+        test_path = dataset_cfg.get('test_path')
+
+        if not train_path or not os.path.isfile(train_path):
+            raise FileNotFoundError(f"Training data file not found: {train_path}")
+
+        train_records = load_training_records(train_path)
+
+        if test_path:
+            if not os.path.isfile(test_path):
+                raise FileNotFoundError(f"Test data file not found: {test_path}")
+            test_records = load_training_records(test_path)
+        else:
+            split_cfg = dataset_cfg.get('split', {})
+            train_fraction = float(split_cfg.get('train', 0.7))
+            val_fraction = float(split_cfg.get('validation', 0.15))
+            test_fraction = float(split_cfg.get('test', 0.15))
+
+            train_records, _, test_records = split_training_records(
+                train_records,
+                val_size=val_fraction,
+                test_size=test_fraction,
+            )
+
+        if dataset_cfg.get('shuffle', False):
+            random.shuffle(train_records)
+            random.shuffle(test_records)
+
+        datasets.append(Dataset(
+            train_records=train_records,
+            test_records=test_records,
+            feature_columns=model_feature_columns,
+            label_column=label_column,
+        ))
+
+    # Build model instances
+    models = []
     for model_cfg in config['models']:
         model_name = model_cfg['model']
         if model_name not in MODEL_REGISTRY:
             print(f"Warning: Unknown model '{model_name}' in config — skipping.", file=sys.stderr)
             continue
 
-        # Extract top_n_categories from parameters; remove it before passing to sklearn
         parameters = dict(model_cfg.get('parameters', {}))
         top_n_categories = parameters.pop('top_n_categories', 3)
 
-        ModelClass = MODEL_REGISTRY[model_name]
-        model = ModelClass(
-            x_features=model_cfg['x_features'],
-            y_feature=model_cfg['y_features'][0],
+        x_features = model_cfg['x_features']
+        y_feature = model_cfg['y_features'][0]
+        top_n_jobs = config['evaluation'].get('top_k', 5)
+
+        model = MODEL_REGISTRY[model_name](
+            x_features=x_features,
+            y_feature=y_feature,
             parameters=parameters,
             top_n_jobs=top_n_jobs,
             top_n_categories=top_n_categories,
         )
+        models.append(model)
 
-        X_train = train_df[model_cfg['x_features']]
-        y_train = train_df[model_cfg['y_features'][0]]
+    print(f"\n{len(datasets)} dataset(s) loaded, {len(models)} model(s) instantiated.")
 
-        print(f"Training {model_name}...")
-        model.train(X_train, y_train)
-        trained_models.append(model)
-        print(f"  {model_name} trained.")
+    # Run evaluation across all datasets and models
+    evaluation_results_path = output_dir / 'evaluation.json'
+    evaluation_results = evaluate_experiment(
+        datasets,
+        models,
+        onet_db,
+        config,
+        output_path=evaluation_results_path,
+    )
 
-    print(f"\nAll models trained. {len(trained_models)} model(s) ready for evaluation.")
-    # TODO: Pass trained_models and onet_db to evaluation module
-    return trained_models
+    if config['output'].get('save_metrics', False):
+        output_path = save_results_to_file(
+            evaluation_results,
+            output_dir=output_dir,
+        )
+        print(f"Evaluation results saved to {output_path}")
+
+    print(f"\nExperiment complete. Total results: {len(evaluation_results)}")
+
+    return evaluation_results
 
 
 if __name__ == "__main__":

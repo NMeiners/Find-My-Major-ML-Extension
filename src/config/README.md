@@ -6,10 +6,11 @@ This module handles loading and validation of experiment configuration files for
 
 The config system allows defining experiments with multiple datasets and models. The training pipeline iterates over all combinations:
 
-```python
+```
 for dataset in config["datasets"]:
     for model in config["models"]:
         run_training(dataset, model)
+        run_testing(dataset, model)
 ```
 
 This creates a matrix of experiments, running each model on each dataset.

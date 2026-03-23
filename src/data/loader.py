@@ -64,6 +64,19 @@ _TRAINING_COL_MAP: dict[str, str] = {
     "Career Category": "career_category",
 }
 
+# Maps O*NET-style training column names to Kaggle-style training column names
+# This allows the training loader to accept both O*NET career profiles and
+# Kaggle RIASEC training CSV formats.
+_ALTERNATE_TRAINING_COL_MAP: dict[str, str] = {
+    "Realistic": "R normalized",
+    "Investigative": "I normalized",
+    "Artistic": "A normalized",
+    "Social": "S normalized",
+    "Enterprising": "E normalized",
+    "Conventional": "C normalized",
+    "Career Category": "Career Category",
+}
+
 # Maps raw careers CSV column names to CareerProfile field names
 _CAREER_COL_MAP: dict[str, str] = {
     "O*NET-SOC Code": "code",
@@ -103,6 +116,12 @@ def load_training_records(path: Path | str = TRAINING_CSV) -> list[TrainingRecor
         to canonical BROAD_CATEGORIES values before construction
     """
     df = pd.read_csv(path)
+
+    if not set(_TRAINING_COL_MAP.keys()).issubset(df.columns):
+        # Accept O*NET-style data in one pass by converting field names
+        # from Realistic / Investigative etc. to R normalized / I normalized etc.
+        if set(_ALTERNATE_TRAINING_COL_MAP.keys()).issubset(df.columns):
+            df = df.rename(columns=_ALTERNATE_TRAINING_COL_MAP)
 
     errors = validate_training_dataframe(df)
     if errors:
