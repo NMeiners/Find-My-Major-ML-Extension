@@ -1,0 +1,182 @@
+# ============================================================
+# Experiment Metadata
+# ============================================================
+
+experiment:
+  id: exp_001
+  description: Baseline model comparison using RIASEC features
+  author: team_member
+  created: YYYY-MM-DD
+  random_seed: 42
+
+# ============================================================
+# Dataset Matrix
+# Each row = one dataset configuration
+# ============================================================
+
+onet_db_path: docs/data/master_careers_riasec_categories.csv  # O*NET career database — used for training AND job ranking
+
+datasets:
+
+  # Row 1 — O*NET as train, Kaggle as test
+  - name: onet_kaggle
+    train_path: docs/data/master_careers_riasec_categories.csv
+    test_path: docs/data/Kaggle_Cleaned_Mapped_Categories.csv
+
+    split: null
+    shuffle: false
+
+
+# ============================================================
+# Model Matrix
+# Each row = one model training configuration
+# ============================================================
+
+models:
+
+  # Row 1
+  - model: logistic_regression
+
+    parameters:
+      max_iter: 1000
+      solver: lbfgs
+      top_n_categories: 3
+
+    x_features:
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
+
+    y_features:
+      - Career Category
+
+  # Row 2
+  - model: random_forest
+
+    parameters:
+      n_estimators: 200
+      max_depth: 10
+      top_n_categories: 3
+
+    x_features:
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
+
+    y_features:
+      - Career Category
+
+  # Row 3
+  - model: gradient_boosting
+
+    parameters:
+      n_estimators: 100
+      learning_rate: 0.1
+      top_n_categories: 3
+
+    x_features:
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
+
+    y_features:
+      - Career Category
+
+  # Row 4
+  - model: heuristic
+
+    parameters:
+      top_n_categories: 3  # unused by heuristic; kept for interface consistency
+
+    x_features:
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
+
+    y_features:
+      - Career Category
+
+  # Row 5
+  - model: knn
+
+    parameters:
+      n_neighbors: 5
+      top_n_categories: 3
+
+    x_features:
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
+
+    y_features:
+      - Career Category
+
+# ============================================================
+# Training Configuration
+# ============================================================
+
+training:
+
+  cross_validation_folds: 5
+  normalize_features: true
+  standardize_features: true
+  parallel_jobs: 4
+
+# ============================================================
+# Evaluation
+# ============================================================
+
+evaluation:
+
+  metrics:
+    - ndcg_at_k
+    - precision_at_k
+  k_values:
+    - 5
+  benchmark_runs: 1
+  progress_log_interval: 1000
+  top_k: 5
+  max_test_samples: null
+
+# ============================================================
+# Output
+# ============================================================
+
+output:
+
+  directory: experiments/results/exp_001
+
+  save_models: true
+  save_predictions: true
+  save_metrics: true
+
+# ============================================================
+# Export
+# ============================================================
+
+export:
+
+  export_inference_model: true
+  format: onnx
+
+# ============================================================
+# Notes
+# ============================================================
+
+notes: |
+  Baseline comparison of classical ML models using RIASEC features.

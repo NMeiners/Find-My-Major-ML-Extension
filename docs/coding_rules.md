@@ -79,7 +79,8 @@ These rules specifically protect against low-quality or hallucinated AI code.
 ## 3.6 No Silent Metric Redefinition
 
 * Evaluation metrics must be implemented centrally.
-* Models must not redefine ranking or similarity metrics internally.
+* Production models in `MODEL_REGISTRY` must not redefine ranking or similarity metrics internally.
+* Legacy compatibility helpers may retain frozen ranking behavior only when explicitly marked legacy and excluded from the production registry.
 * Changes to metric definitions require documentation update.
 
 ---
@@ -123,7 +124,7 @@ These constraints may evolve via ADR if needed.
 
 # 5. Data Contracts and Ethical Constraints
 
-This project explicitly avoids demographic or protected attributes.
+This project explicitly avoids using demographic or protected attributes as model features or evaluation decision criteria.
 
 ## 5.1 Data Ownership
 
@@ -132,11 +133,13 @@ This project explicitly avoids demographic or protected attributes.
 
 ## 5.2 Prohibited Features
 
-The following must NOT be introduced:
+The following must NOT be introduced into model features, ranking logic, or official evaluation criteria:
 
 * Demographic attributes
 * Protected characteristics
 * Personally identifiable information (PII)
+
+Raw/source research datasets may still contain additional columns for provenance or exploratory analysis, but those fields must remain excluded from model feature selection and production outputs.
 
 ## 5.3 Schema Stability
 
