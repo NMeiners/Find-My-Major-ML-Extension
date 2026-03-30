@@ -13,12 +13,13 @@ AI Tools Used:
 
 Editors:
   - AI Assistant (2026-03-23) — Initial implementation
+  - AI Assistant (2026-03-30) — Added validation and contract-check coverage
 
 Last Editor:
   - AI Assistant
 
 Last Edit Date:
-  2026-03-23
+  2026-03-30
 
 Assumptions & Constraints:
   - Uses mock models and datasets
@@ -36,7 +37,12 @@ import shutil
 from pathlib import Path
 from unittest.mock import Mock, patch
 import pandas as pd
-from src.evaluation.evaluator import Dataset, evaluate_model, evaluate_experiment
+from src.evaluation.evaluator import (
+    Dataset,
+    evaluate_model,
+    evaluate_experiment,
+    EvaluationInterrupted,
+)
 from src.data.schemas import TrainingRecord
 
 
@@ -159,11 +165,88 @@ class TestEvaluateModel(unittest.TestCase):
         self.assertIn('memory_bytes', result)
         self.assertIn('model_size_mb', result)
         self.assertIn('constraint_violations', result)
+        self.assertIn('samples_evaluated', result)
 
         # Check values
         self.assertEqual(result['metrics'], {'ndcg@5': 0.8, 'precision@5': 0.6})
         self.assertEqual(result['latency_ms'], 10.0)
         self.assertEqual(result['memory_bytes'], 1024)
+        self.assertEqual(result['samples_evaluated'], 1)
+
+    @patch('src.evaluation.evaluator.benchmark_model_inference')
+    @patch('src.evaluation.evaluator.compute_all_metrics')
+    def test_evaluate_model_respects_metric_selection(self, mock_compute_metrics, mock_benchmark):
+        """Test evaluate_model filters metrics based on config.evaluation.metrics."""
+        mock_benchmark.return_value = {
+            'latency_ms': 10.0,
+            'memory_bytes': 1024,
+            'predictions': self.mock_model.test.return_value
+        }
+        mock_compute_metrics.return_value = {'ndcg@5': 0.8, 'precision@5': 0.6}
+
+        config = {'evaluation': {'k_values': [5], 'metrics': ['ndcg_at_k']}}
+        result = evaluate_model(self.mock_model, self.dataset, self.onet_db, config)
+
+        self.assertEqual(result['metrics'], {'ndcg@5': 0.8})
+
+    def test_evaluate_model_invalid_metric_raises(self):
+        """Test evaluate_model fails on unsupported metric names."""
+        bad_config = {'evaluation': {'k_values': [5], 'metrics': ['accuracy']}}
+
+        with self.assertRaises(ValueError):
+            evaluate_model(self.mock_model, self.dataset, self.onet_db, bad_config)
+
+    def test_evaluate_model_k_values_exceed_top_k_raises(self):
+        """Test evaluate_model fails when evaluation.k_values exceeds evaluation.top_k."""
+        bad_config = {'evaluation': {'k_values': [10], 'top_k': 5}}
+
+        with self.assertRaises(ValueError):
+            evaluate_model(self.mock_model, self.dataset, self.onet_db, bad_config)
+
+    def test_evaluate_model_invalid_progress_log_interval_raises(self):
+        """Test evaluate_model validates evaluation.progress_log_interval."""
+        bad_config = {'evaluation': {'k_values': [5], 'progress_log_interval': 0}}
+
+        with self.assertRaises(ValueError):
+            evaluate_model(self.mock_model, self.dataset, self.onet_db, bad_config)
+
+    def test_evaluate_model_raises_when_no_samples_evaluated(self):
+        """Test evaluate_model fails fast when max_test_samples excludes all rows."""
+        config = {'evaluation': {'k_values': [5], 'max_test_samples': 0}}
+
+        with patch('src.evaluation.evaluator.benchmark_model_inference') as mock_benchmark, \
+             patch('src.evaluation.evaluator.compute_all_metrics') as mock_metrics:
+            mock_benchmark.return_value = {
+                'latency_ms': 10.0,
+                'memory_bytes': 1024,
+                'predictions': self.mock_model.test.return_value
+            }
+            mock_metrics.return_value = {'ndcg@5': 0.8, 'precision@5': 0.6}
+
+            with self.assertRaises(ValueError):
+                evaluate_model(self.mock_model, self.dataset, self.onet_db, config)
+
+    def test_evaluate_model_max_test_samples_uses_sample_count_not_row_index(self):
+        """Test max_test_samples is based on sample count, not DataFrame row index values."""
+        config = {'evaluation': {'k_values': [5], 'max_test_samples': 1}}
+
+        train_df, test_df = self.dataset.split()
+        test_df.index = [99]
+
+        with patch.object(self.dataset, 'split', return_value=(train_df, test_df)), \
+             patch('src.evaluation.evaluator.benchmark_model_inference') as mock_benchmark, \
+             patch('src.evaluation.evaluator.compute_all_metrics') as mock_metrics:
+            mock_benchmark.return_value = {
+                'latency_ms': 10.0,
+                'memory_bytes': 1024,
+                'predictions': self.mock_model.test.return_value
+            }
+            mock_metrics.return_value = {'ndcg@5': 0.8, 'precision@5': 0.6}
+
+            result = evaluate_model(self.mock_model, self.dataset, self.onet_db, config)
+
+            self.assertEqual(mock_benchmark.call_count, 1)
+            self.assertEqual(result['samples_evaluated'], 1)
 
     def test_evaluate_model_calls_benchmark(self):
         """Test that evaluate_model calls benchmark_model_inference for each test sample."""
@@ -179,6 +262,47 @@ class TestEvaluateModel(unittest.TestCase):
 
             # Should call benchmark once for one test sample
             self.assertEqual(mock_benchmark.call_count, 1)
+
+    def test_evaluate_model_interrupt_returns_partial_result(self):
+        """Test evaluate_model raises EvaluationInterrupted with partial metrics."""
+        train_records = [
+            TrainingRecord(realistic=0.8, investigative=0.6, artistic=0.4,
+                          social=0.7, enterprising=0.5, conventional=0.3,
+                          career_category='Engineering, Manufacturing & Construction')
+        ]
+        test_records = [
+            TrainingRecord(realistic=0.7, investigative=0.5, artistic=0.6,
+                          social=0.8, enterprising=0.4, conventional=0.3,
+                          career_category='Arts, Communications & Humanities'),
+            TrainingRecord(realistic=0.6, investigative=0.4, artistic=0.5,
+                          social=0.7, enterprising=0.3, conventional=0.2,
+                          career_category='Arts, Communications & Humanities'),
+        ]
+        dataset = Dataset(
+            train_records,
+            test_records,
+            ['realistic', 'investigative', 'artistic', 'social', 'enterprising', 'conventional']
+        )
+
+        with patch('src.evaluation.evaluator.benchmark_model_inference') as mock_benchmark, \
+             patch('src.evaluation.evaluator.compute_all_metrics') as mock_metrics:
+            mock_benchmark.side_effect = [
+                {
+                    'latency_ms': 10.0,
+                    'memory_bytes': 1024,
+                    'predictions': self.mock_model.test.return_value,
+                },
+                KeyboardInterrupt(),
+            ]
+            mock_metrics.return_value = {'ndcg@5': 0.8, 'precision@5': 0.6}
+
+            with self.assertRaises(EvaluationInterrupted) as ctx:
+                evaluate_model(self.mock_model, dataset, self.onet_db, {'evaluation': {'k_values': [5]}})
+
+            partial = ctx.exception.partial_result
+            self.assertEqual(partial['samples_evaluated'], 1)
+            self.assertEqual(partial['metrics']['ndcg@5'], 0.8)
+            self.assertEqual(partial['metrics']['precision@5'], 0.6)
 
     def test_evaluate_experiment_writes_incremental_output(self):
         """Test evaluate_experiment writes output path progressively."""
@@ -196,7 +320,8 @@ class TestEvaluateModel(unittest.TestCase):
                 'latency_ms': 5.0,
                 'memory_bytes': 512,
                 'model_size_mb': 0.1,
-                'constraint_violations': {}
+                'constraint_violations': {},
+                'samples_evaluated': 1,
             }
             results = evaluate_experiment([dataset], [model], onet_db, config, output_path=output_path)
 
@@ -205,6 +330,41 @@ class TestEvaluateModel(unittest.TestCase):
             saved_results = json.load(f)
 
         self.assertEqual(saved_results, results)
+
+        shutil.rmtree(output_dir)
+
+    def test_evaluate_experiment_persists_partial_result_on_interrupt(self):
+        """Test evaluate_experiment saves partial model result when interrupted."""
+        dataset = self.dataset
+        model = self.mock_model
+        onet_db = self.onet_db
+        config = {'evaluation': {'k_values': [5]}}
+
+        output_dir = tempfile.mkdtemp()
+        output_path = Path(output_dir) / 'evaluation.json'
+
+        partial_result = {
+            'metrics': {'ndcg@5': 0.5, 'precision@5': 0.4},
+            'latency_ms': 5.0,
+            'memory_bytes': 512,
+            'model_size_mb': 0.1,
+            'constraint_violations': {},
+            'samples_evaluated': 2,
+        }
+
+        with patch('src.evaluation.evaluator.evaluate_model') as mock_eval:
+            mock_eval.side_effect = EvaluationInterrupted(partial_result)
+
+            with self.assertRaises(KeyboardInterrupt):
+                evaluate_experiment([dataset], [model], onet_db, config, output_path=output_path)
+
+        self.assertTrue(output_path.exists())
+        with open(output_path, 'r') as f:
+            saved_results = json.load(f)
+
+        self.assertEqual(len(saved_results), 1)
+        self.assertTrue(saved_results[0]['interrupted'])
+        self.assertEqual(saved_results[0]['samples_evaluated'], 2)
 
         shutil.rmtree(output_dir)
 

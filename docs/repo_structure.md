@@ -15,16 +15,23 @@ The purpose of this structure is to:
 
 ```
 repo/
+├── .devcontainer/
 ├── .github/
 │   └── workflows/
 ├── docs/
+├── models/
 ├── notebooks/
+├── scripts/
 ├── src/
 ├── experiments/
 ├── tests/
 ├── environment/
 └── README.md
 ```
+
+Local/generated directories such as `__pycache__/` and `.pytest_cache/` may
+exist in developer environments but are not part of the canonical repository
+structure.
 
 ---
 
@@ -147,6 +154,43 @@ Defines reproducible development environments.
 
 * Dependency changes require documentation updates.
 * Environment files must remain minimal and explicit.
+
+---
+
+## models/
+
+**Purpose:**
+Stores local model artifacts and model-related notes used during experimentation.
+
+**Rules:**
+
+* Treat this directory as non-source artifact space.
+* Keep reproducibility by documenting how artifacts are generated.
+* Large binaries should remain ignored unless explicitly required.
+
+---
+
+## scripts/
+
+**Purpose:**
+Houses utility scripts for data/bootstrap tasks that are not part of `src/` runtime modules.
+
+**Rules:**
+
+* Scripts may call into `src/` modules but should not duplicate core logic.
+* Script behavior that becomes reusable should be promoted into `src/`.
+
+---
+
+## .devcontainer/
+
+**Purpose:**
+Development-container configuration for consistent local environments.
+
+**Rules:**
+
+* Keep environment/tooling setup here only.
+* Do not place project runtime/business logic in this directory.
 
 ---
 

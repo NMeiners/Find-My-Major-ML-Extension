@@ -37,6 +37,7 @@ Related Docs:
 import pytest
 import pandas as pd
 import numpy as np
+from unittest.mock import Mock, patch
 
 from src.models.base import BaseModel
 from src.models.heuristic import HeuristicModel
@@ -281,6 +282,64 @@ def test_match_scores_in_valid_range(ModelClass, params, train_data, onet_db, st
     model.train(X_train, y_train)
     result = model.test(student_vector, onet_db)
     assert result["Match_Score"].between(0.0, 1.0).all()
+
+
+def test_random_forest_train_strips_wrapper_only_parameters(train_data):
+    """
+    Name: test_random_forest_train_strips_wrapper_only_parameters
+
+    Purpose:
+      Verify RandomForestModel.train() removes wrapper-only parameters
+      (use_smote/smote) before constructing sklearn RandomForestClassifier.
+    """
+    X_train, y_train = train_data
+    params = {
+        "n_estimators": 10,
+        "random_state": 42,
+        "use_smote": False,
+        "smote": {"random_state": 42},
+    }
+    model = _make_model(RandomForestModel, params)
+
+    with patch("src.models.random_forest.RandomForestClassifier") as mock_rf:
+        rf_instance = Mock()
+        mock_rf.return_value = rf_instance
+
+        model.train(X_train, y_train)
+
+        mock_rf.assert_called_once_with(n_estimators=10, random_state=42)
+        rf_instance.fit.assert_called_once()
+
+
+def test_random_forest_train_applies_smote_when_enabled(train_data):
+    """
+    Name: test_random_forest_train_applies_smote_when_enabled
+
+    Purpose:
+      Verify RandomForestModel.train() applies SMOTE resampling when use_smote=True.
+    """
+    X_train, y_train = train_data
+    params = {
+        "n_estimators": 10,
+        "use_smote": True,
+        "smote": {"random_state": 42},
+    }
+    model = _make_model(RandomForestModel, params)
+
+    with patch("src.models.random_forest._build_smote") as mock_build_smote, \
+         patch("src.models.random_forest.RandomForestClassifier") as mock_rf:
+        smote_instance = Mock()
+        smote_instance.fit_resample.return_value = (X_train, y_train)
+        mock_build_smote.return_value = smote_instance
+
+        rf_instance = Mock()
+        mock_rf.return_value = rf_instance
+
+        model.train(X_train, y_train)
+
+        mock_build_smote.assert_called_once_with(random_state=42)
+        smote_instance.fit_resample.assert_called_once()
+        rf_instance.fit.assert_called_once_with(X_train, y_train)
 
 
 # ── Error handling tests ──────────────────────────────────────────────────────

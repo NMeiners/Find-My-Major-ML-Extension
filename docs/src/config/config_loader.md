@@ -35,7 +35,7 @@ The Config Loader performs the following tasks:
 Configuration file:
 
 ```
-configs/exp_config.yaml
+experiments/config/exp_config.yaml
 ```
 
 The configuration file defines:
@@ -44,7 +44,7 @@ The configuration file defines:
 * dataset configurations
 * model configurations
 * training settings
-* evaluation metrics
+* evaluation settings
 * output locations
 
 ---
@@ -82,7 +82,7 @@ Example:
 datasets:
 
   - name: riasec_dataset
-    train_path: data/raw/data.csv
+    train_path: docs/data/master_careers_riasec_categories.csv
     test_path: null
 
     split:
@@ -114,17 +114,18 @@ models:
     parameters:
       max_iter: 1000
       solver: lbfgs
+      top_n_categories: 3
 
     x_features:
-      - realistic
-      - investigative
-      - artistic
-      - social
-      - enterprising
-      - conventional
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
 
     y_features:
-      - career_label
+      - Career Category
 ```
 
 Each model row defines:
@@ -167,10 +168,17 @@ evaluation:
   metrics:
     - ndcg_at_k
     - precision_at_k
-    - accuracy
-
+  k_values:
+    - 5
+    # each k must be <= top_k
+  benchmark_runs: 1
+  max_test_samples: null
+  progress_log_interval: 1000
   top_k: 5
 ```
+
+`metrics` currently supports `ndcg_at_k` and `precision_at_k`.
+`k_values` must contain positive integers less than or equal to `top_k`.
 
 ---
 
@@ -189,6 +197,9 @@ output:
   save_predictions: true
   save_metrics: true
 ```
+
+`save_metrics` is implemented.
+`save_models` and `save_predictions` are currently accepted config flags but emit runtime warnings because artifact persistence for those outputs is not yet implemented in `main.py`.
 
 ---
 
@@ -247,9 +258,13 @@ python main.py experiments/config/exp_config.yaml
 
 The CLI validates the file existence and loads the configuration before training begins.
 
-# Output Directory Creation
+# Runtime Output Directory (Pipeline)
 
-The loader generates a unique output directory for each run:
+`load_config()` injects runtime metadata (`run_id`, `start_time`) only.
+
+`experiment.random_seed` is consumed by `main.py` to seed Python `random` and NumPy for deterministic runs.
+
+The output directory is created by `main.py` using:
 
 ```
 <output_directory>/<run_id>/
@@ -261,11 +276,7 @@ Example:
 experiments/results/exp_001/exp_001_20260314_154212/
 ```
 
-The directory is created if it does not exist.
-
-* create output directories
-* label experiment artifacts
-* track experiment runs
+This keeps configuration loading and filesystem side effects separated.
 
 ---
 
@@ -286,7 +297,7 @@ Path to the experiment configuration file.
 Example:
 
 ```
-configs/exp_config.yaml
+experiments/config/exp_config.yaml
 ```
 
 ---
@@ -298,7 +309,7 @@ A dictionary containing the parsed configuration and runtime metadata.
 Example:
 
 ```python
-config = load_config("configs/exp_config.yaml")
+config = load_config("experiments/config/exp_config.yaml")
 ```
 
 ---
@@ -308,9 +319,9 @@ config = load_config("configs/exp_config.yaml")
 Example usage in the training pipeline:
 
 ```python
-from config.config_loader import load_config
+from src.config.config_loader import load_config
 
-config = load_config("configs/exp_config.yaml")
+config = load_config("experiments/config/exp_config.yaml")
 
 run_id = config["run"]["run_id"]
 datasets = config["datasets"]
@@ -352,14 +363,13 @@ Potential enhancements to the config loader include:
 
 # Related Modules
 
-Potential modules interacting with the config loader:
+Primary modules interacting with the config loader:
 
 ```
-training_pipeline.py
-dataset_loader.py
-model_registry.py
-evaluation.py
-experiment_runner.py
+main.py
+src/data/loader.py
+src/models/__init__.py
+src/evaluation/evaluator.py
 ```
 
 These modules rely on the configuration object produced by the config loader.

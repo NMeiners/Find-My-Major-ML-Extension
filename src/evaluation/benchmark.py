@@ -14,15 +14,16 @@ AI Tools Used:
 
 Editors:
   - AI Assistant (2026-03-23) — Initial implementation
+  - AI Assistant (2026-03-30) — Improved deep memory and serialized model-size estimation
 
 Last Editor:
   - AI Assistant
 
 Last Edit Date:
-  2026-03-23
+  2026-03-30
 
 Assumptions & Constraints:
-  - Memory measurement uses sys.getsizeof as approximation
+  - Memory measurement is approximate and uses deep sizing for common container types
   - Latency measured in milliseconds
   - No external profiling libraries allowed
   - Benchmarks are approximate and for relative comparison
@@ -33,7 +34,8 @@ Related Docs:
 
 import sys
 import time
-from typing import Callable, Any, Dict, List
+import pickle
+from typing import Callable, Any, Dict
 import gc
 import pandas as pd
 
@@ -60,14 +62,14 @@ def measure_latency_ms(func: Callable, *args, **kwargs) -> float:
       - Returns wall-clock time including any I/O
     """
     start_time = time.perf_counter()
-    result = func(*args, **kwargs)
+    _ = func(*args, **kwargs)
     end_time = time.perf_counter()
 
     latency_ms = (end_time - start_time) * 1000
     return latency_ms
 
 
-def estimate_memory_usage(obj: Any) -> int:
+def estimate_memory_usage(obj: Any, _seen: set[int] | None = None) -> int:
     """
     Name: estimate_memory_usage
 
@@ -84,13 +86,47 @@ def estimate_memory_usage(obj: Any) -> int:
       - None
 
     Notes:
-      - This is an approximation and may underestimate complex objects
-      - Does not account for shared memory or garbage collection
+      - This is still an approximation for complex graphs and shared references
+      - Uses deep sizing for DataFrame/Series and common Python containers
     """
-    return sys.getsizeof(obj)
+    if obj is None:
+        return 0
+
+    if _seen is None:
+        _seen = set()
+
+    obj_id = id(obj)
+    if obj_id in _seen:
+        return 0
+    _seen.add(obj_id)
+
+    if isinstance(obj, pd.DataFrame):
+        return int(obj.memory_usage(index=True, deep=True).sum())
+
+    if isinstance(obj, pd.Series):
+        return int(obj.memory_usage(index=True, deep=True))
+
+    size = sys.getsizeof(obj)
+
+    if isinstance(obj, dict):
+        size += sum(
+            estimate_memory_usage(key, _seen) + estimate_memory_usage(value, _seen)
+            for key, value in obj.items()
+        )
+    elif isinstance(obj, (list, tuple, set, frozenset)):
+        size += sum(estimate_memory_usage(item, _seen) for item in obj)
+    elif hasattr(obj, "__dict__"):
+        size += estimate_memory_usage(vars(obj), _seen)
+
+    return int(size)
 
 
-def benchmark_model_inference(model: Any, test_data: Any, onet_db: pd.DataFrame, num_runs: int = 5) -> Dict[str, float]:
+def benchmark_model_inference(
+    model: Any,
+    test_data: Any,
+    onet_db: pd.DataFrame,
+    num_runs: int = 5,
+) -> Dict[str, Any]:
     """
     Name: benchmark_model_inference
 
@@ -98,9 +134,9 @@ def benchmark_model_inference(model: Any, test_data: Any, onet_db: pd.DataFrame,
       Benchmarks model inference performance across multiple runs.
 
     Inputs:
-      - model: Any 1 model instance with test() method
-      - test_data: Any 1 test dataset (format expected by model.test())
-      - onet_db: pd.DataFrame 1 O*NET database used for ranking jobs
+      - model: Any — model instance with test() method
+      - test_data: Any — test dataset (format expected by model.test())
+      - onet_db: pd.DataFrame — O*NET database used for ranking jobs
       - num_runs: int — number of benchmark runs for averaging
 
     Outputs:
@@ -121,8 +157,11 @@ def benchmark_model_inference(model: Any, test_data: Any, onet_db: pd.DataFrame,
     memory_usages = []
 
     for _ in range(num_runs):
-        # Force garbage collection for cleaner memory measurement
-        gc.collect()
+        # For multi-run micro-benchmarks, force GC between runs.
+        # Skip this in the common num_runs=1 path to avoid major slowdown
+        # during large evaluation loops.
+        if num_runs > 1:
+            gc.collect()
 
         # Measure latency
         start_time = time.perf_counter()
@@ -160,9 +199,15 @@ def get_model_size_mb(model: Any) -> float:
       - None
 
     Notes:
-      - Uses sys.getsizeof which may not capture all model state
-      - For ML models, this is typically an underestimate
+      - Prefers serialized estimator size via pickle when possible
+      - Falls back to approximate recursive object sizing when serialization fails
     """
-    size_bytes = estimate_memory_usage(model)
+    model_obj = getattr(model, "_model", model)
+
+    try:
+        size_bytes = len(pickle.dumps(model_obj, protocol=pickle.HIGHEST_PROTOCOL))
+    except Exception:
+        size_bytes = estimate_memory_usage(model_obj)
+
     size_mb = size_bytes / (1024 * 1024)
     return size_mb

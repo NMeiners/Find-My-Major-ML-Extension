@@ -14,11 +14,13 @@ experiment:
 # Each row = one dataset configuration
 # ============================================================
 
+onet_db_path: docs/data/master_careers_riasec_categories.csv
+
 datasets:
 
   # Row 1
   - name: riasec_single_dataset
-    train_path: data/raw/data.csv
+    train_path: docs/data/master_careers_riasec_categories.csv
     test_path: null
 
     split:
@@ -30,8 +32,8 @@ datasets:
 
   # Row 2
   - name: kaggle_train_test
-    train_path: data/raw/train.csv
-    test_path: data/raw/test.csv
+    train_path: docs/data/master_careers_riasec_categories.csv
+    test_path: docs/data/Kaggle_Cleaned_Mapped_Categories.csv
 
     split: null
     shuffle: false
@@ -50,17 +52,18 @@ models:
     parameters:
       max_iter: 1000
       solver: lbfgs
+      top_n_categories: 3
 
     x_features:
-      - realistic
-      - investigative
-      - artistic
-      - social
-      - enterprising
-      - conventional
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
 
     y_features:
-      - career_label
+      - Career Category
 
   # Row 2
   - model: random_forest
@@ -68,18 +71,18 @@ models:
     parameters:
       n_estimators: 200
       max_depth: 10
+      top_n_categories: 3
 
     x_features:
-      - realistic
-      - investigative
-      - artistic
-      - social
-      - enterprising
-      - conventional
-      - riasec_variance
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
 
     y_features:
-      - career_label
+      - Career Category
 
   # Row 3
   - model: gradient_boosting
@@ -87,17 +90,18 @@ models:
     parameters:
       n_estimators: 100
       learning_rate: 0.1
+      top_n_categories: 3
 
     x_features:
-      - realistic
-      - investigative
-      - artistic
-      - social
-      - enterprising
-      - conventional
+      - Realistic
+      - Investigative
+      - Artistic
+      - Social
+      - Enterprising
+      - Conventional
 
     y_features:
-      - career_label
+      - Career Category
 
 # ============================================================
 # Training Configuration
@@ -117,11 +121,15 @@ training:
 evaluation:
 
   metrics:
-    - ndcg_at_k
-    - precision_at_k
-    - accuracy
-
-  top_k: 5
+    - ndcg_at_k       # supported metric family
+    - precision_at_k  # supported metric family
+  k_values:
+    - 5
+    # Each k must be <= top_k
+  benchmark_runs: 1
+  max_test_samples: null
+  progress_log_interval: 1000
+  top_k: 5  # used by model recommendation output size
 
 # ============================================================
 # Output

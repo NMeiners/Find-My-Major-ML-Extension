@@ -1,32 +1,31 @@
 """
-Module: src/config
+File: __init__.py
+Path: src/config/__init__.py
 
-Responsibility
-This module handles configuration loading and management for experiments.
-It owns the loading of YAML config files and generation of runtime metadata.
-It does NOT handle training logic, data processing, or model evaluation.
+Purpose:
+  Package marker for configuration utilities. Exposes module-level documentation
+  context for the config package and keeps configuration loading concerns under
+  `src/config`.
 
-Public Interfaces
-- load_config: Loads and validates experiment configuration from YAML file
-    - Calls: yaml.safe_load (external), datetime (stdlib)
+Original Author(s):
+  - AI Assistant
 
-Internal Structure
-- config_loader.py: Main loader implementation
+AI Tools Used:
+  - AI Assistant - documentation alignment
 
-Data Contracts
-- Inputs: YAML file path (str)
-- Outputs: Dict with config and runtime metadata
+Editors:
+  - AI Assistant (2026-03-30) — Updated file header to repository template
 
-Constraints
-- Performance: Fast loading for small config files
-- Memory: Minimal memory usage
-- Privacy: No PII handling
-- Bias considerations: N/A
+Last Editor:
+  - AI Assistant
 
-Related Modules
-- src/models/
-- src/evaluation/
+Last Edit Date:
+  2026-03-30
 
-Related Documentation
-- docs/src/config/config_loader.md
+Assumptions & Constraints:
+  - Runtime configuration loading is implemented in config_loader.py
+  - This package file has no executable runtime logic
+
+Related Docs:
+  - docs/src/config/config_loader.md
 """

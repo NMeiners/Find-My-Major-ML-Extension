@@ -6,7 +6,8 @@ Purpose:
   Implements a Random Forest classifier for RIASEC-based career category prediction.
   Refactors the logic from baseline.py into a class-based interface that inherits
   from BaseModel. Uses predict_proba to select top career categories, then ranks
-  specific jobs via cosine similarity through ranking.py.
+  specific jobs via cosine similarity through ranking.py. Supports optional SMOTE
+  balancing for parity with notebook training workflows.
 
 Original Author(s):
   - Angela Fleenor
@@ -17,17 +18,20 @@ AI Tools Used:
 
 Editors:
   - AI Assistant (2026-03-20) — Initial implementation; logic refactored from baseline.py
+  - AI Assistant (2026-03-30) — Added optional SMOTE preprocessing in train()
 
 Last Editor:
   - AI Assistant
 
 Last Edit Date:
-  2026-03-20
+  2026-03-30
 
 Assumptions & Constraints:
   - train() must be called before test()
   - x_features must match column names in both X_train and X_test
   - parameters dict may include any valid sklearn RandomForestClassifier kwargs
+  - If `use_smote` is enabled, y_train must contain enough examples per class
+    for the configured SMOTE neighborhood settings
 
 Related Docs:
   - docs/src/models.md
@@ -41,6 +45,20 @@ from src.models.base import BaseModel
 from src.models.ranking import rank_jobs
 
 _CATEGORY_COL = "Career Category"
+
+
+# Lazily import SMOTE so this module remains importable without imbalanced-learn
+# unless SMOTE is explicitly requested via parameters.use_smote.
+def _build_smote(**smote_params):
+    try:
+        from imblearn.over_sampling import SMOTE
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "SMOTE requested via parameters.use_smote=True, but 'imbalanced-learn' "
+            "is not installed. Install it or disable use_smote."
+        ) from exc
+
+    return SMOTE(**smote_params)
 
 
 class RandomForestModel(BaseModel):
@@ -68,6 +86,8 @@ class RandomForestModel(BaseModel):
 
     Notes:
       - Hyperparameters are unpacked from self.parameters and passed directly to sklearn.
+      - Optional class balancing can be enabled with parameters:
+        `use_smote: bool` and `smote: dict`.
       - This replaces the get_job_recommendations() function in baseline.py for new code.
         baseline.py is kept for notebook compatibility only.
     """
@@ -94,10 +114,26 @@ class RandomForestModel(BaseModel):
           - KeyError: if X_train is missing a required feature column
 
         Notes:
-          - Hyperparameters unpacked from self.parameters; any valid RandomForestClassifier kwarg is accepted.
+          - Hyperparameters unpacked from self.parameters; any valid
+            RandomForestClassifier kwarg is accepted.
+          - Optional preprocessing:
+            `use_smote=True` applies SMOTE on (X_train[self.x_features], y_train)
+            before fitting. Additional SMOTE kwargs can be provided in
+            `parameters["smote"]`.
         """
-        self._model = RandomForestClassifier(**self.parameters)
-        self._model.fit(X_train[self.x_features], y_train)
+        rf_params = dict(self.parameters)
+        use_smote = bool(rf_params.pop("use_smote", False))
+        smote_params = dict(rf_params.pop("smote", {}))
+
+        X_fit = X_train[self.x_features]
+        y_fit = y_train
+
+        if use_smote:
+            smote = _build_smote(**smote_params)
+            X_fit, y_fit = smote.fit_resample(X_fit, y_fit)
+
+        self._model = RandomForestClassifier(**rf_params)
+        self._model.fit(X_fit, y_fit)
 
     def test(self, X_test: pd.DataFrame, onet_db: pd.DataFrame) -> pd.DataFrame:
         """

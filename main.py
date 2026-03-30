@@ -16,12 +16,13 @@ AI Tools Used:
 Editors:
   - AI Assistant (2026-03-14) — Initial implementation
   - AI Assistant (2026-03-20) — Added config-driven model training loop
+  - AI Assistant (2026-03-30) — Added deterministic seed initialization and output flag warnings
 
 Last Editor:
   - AI Assistant
 
 Last Edit Date:
-  2026-03-20
+  2026-03-30
 
 Assumptions & Constraints:
   - Executed from repository root
@@ -42,6 +43,7 @@ import random
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 from src.config.config_loader import load_config
 from src.data.loader import load_training_records, split_training_records
 from src.evaluation import Dataset, evaluate_experiment
@@ -89,6 +91,17 @@ def main():
     except Exception as e:
         print(f"Error loading configuration: {e}", file=sys.stderr)
         sys.exit(1)
+
+    seed_value = config.get('experiment', {}).get('random_seed')
+    if seed_value is not None:
+        try:
+            seed = int(seed_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"experiment.random_seed must be an integer if provided, got {seed_value!r}"
+            ) from exc
+        random.seed(seed)
+        np.random.seed(seed)
 
     # Create output directory (per docs: experiments/results/<experiment_id>/<run_id>/)
     experiment_id = config['experiment']['id']
@@ -189,13 +202,21 @@ def main():
 
     # Run evaluation across all datasets and models
     evaluation_results_path = output_dir / 'evaluation.json'
-    evaluation_results = evaluate_experiment(
-        datasets,
-        models,
-        onet_db,
-        config,
-        output_path=evaluation_results_path,
-    )
+    try:
+        evaluation_results = evaluate_experiment(
+            datasets,
+            models,
+            onet_db,
+            config,
+            output_path=evaluation_results_path,
+        )
+    except KeyboardInterrupt:
+        print("\nEvaluation interrupted by user.", file=sys.stderr)
+        if evaluation_results_path.exists():
+            print(f"Partial results preserved at {evaluation_results_path}", file=sys.stderr)
+        else:
+            print("No partial evaluation results were written yet.", file=sys.stderr)
+        sys.exit(130)
 
     if config['output'].get('save_metrics', False):
         output_path = save_results_to_file(
@@ -203,6 +224,18 @@ def main():
             output_dir=output_dir,
         )
         print(f"Evaluation results saved to {output_path}")
+
+    if config['output'].get('save_models', False):
+        print(
+            "Warning: output.save_models=true but model artifact persistence "
+            "is not implemented in this pipeline."
+        )
+
+    if config['output'].get('save_predictions', False):
+        print(
+            "Warning: output.save_predictions=true but per-sample prediction "
+            "persistence is not implemented in this pipeline."
+        )
 
     print(f"\nExperiment complete. Total results: {len(evaluation_results)}")
 

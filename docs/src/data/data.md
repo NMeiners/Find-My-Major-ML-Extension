@@ -1,41 +1,59 @@
-
 # Module: src/data
 
 ## Responsibility
-Owns all data structures, API fetching, and local storage for O*NET Interest Profiler questions.
-This module does NOT handle data preprocessing, feature engineering, or model-specific transformations.
+Owns data structures, loading, validation, preprocessing, and storage for the project datasets.
+This includes:
+- O*NET Interest Profiler question schemas and API fetch/storage
+- Processed training/career CSV loading and schema validation
+- Conversion of typed records into model-ready feature/label matrices
+
+This module does NOT handle model training, model inference orchestration, or evaluation scoring.
 
 ## Public Interfaces
-- `QuestionSet`: Dataclass container for a complete set of profiler questions with metadata
-- `Question`: Dataclass for a single profiler question with RIASEC area
-- `AnswerOption`: Dataclass for a Likert-scale answer choice (value 1-5)
-- `fetch_questions(api_key, start, end)`: Fetches questions from the O*NET API
-    - `requests`: external HTTP library
-- `save_questions(question_set, path)`: Serializes a QuestionSet to JSON on disk
-- `load_questions(path)`: Deserializes a QuestionSet from a local JSON file
+- `AnswerOption`, `Question`, `QuestionSet` (question schema dataclasses)
+- `TrainingRecord`, `CareerProfile` (typed training/career dataclasses)
+- `fetch_questions(api_key, start, end)`
+- `save_questions(question_set, path)`
+- `load_questions(path)`
+- `load_training_records(path)`
+- `load_career_profiles(path)`
+- `split_training_records(records, val_size, test_size, random_state)`
+- `records_to_dataframe(records)`
+- `extract_features(df)`
+- `extract_labels(df)`
+- `build_training_matrix(records)`
+- `validate_training_dataframe(df)`
+- `validate_career_dataframe(df)`
 
 ## Internal Structure
-- `schemas.py` — Core dataclasses (`Question`, `AnswerOption`, `QuestionSet`) and `RIASEC_AREAS` constant
-- `fetch_questions.py` — O*NET API client for retrieving Interest Profiler questions
-- `store.py` — JSON serialization/deserialization for local persistence
+- `schemas.py` — Dataclasses, category constants, and alias mapping
+- `fetch_questions.py` — O*NET API client for question retrieval
+- `store.py` — JSON persistence for question datasets
+- `loader.py` — CSV loading + typed record construction + stratified splitting
+- `validate.py` — DataFrame validation helpers for training/career CSVs
+- `preprocess.py` — Feature/label extraction and derived feature construction
+- `__init__.py` — Public export surface for question-related interfaces
 
 ## Data Contracts
 - Inputs:
-    - O*NET API key (string) for fetching
-    - File path (Path) for save/load operations
+  - Question API responses from O*NET
+  - Processed CSV files under `docs/data/`
 - Outputs:
-    - `QuestionSet` containing validated `Question` and `AnswerOption` instances
-    - JSON files in `data/raw/` following the data governance directory structure
+  - Typed record collections (`TrainingRecord`, `CareerProfile`)
+  - DataFrames/Series compatible with sklearn model interfaces
 
 ## Constraints
-- Performance: API calls have a 30-second timeout
-- Memory: All 60 questions fit comfortably in memory
-- Privacy: No PII or demographic data is collected or stored
-- Bias considerations: Questions are sourced directly from O*NET without modification
+- Validation is performed on raw CSV schema before typed conversion.
+- RIASEC score fields are validated to `[0.0, 1.0]` in typed dataclasses.
+- Train/val/test splitting is deterministic when `random_state` is fixed.
+- Raw research datasets may contain extra non-model columns; model feature selection is explicit and config-driven.
 
 ## Related Modules
-- src/models (will consume QuestionSet for scoring)
-- src/evaluation (will use RIASEC areas for metric computation)
+- `src/models` (consumes feature matrices and career profiles)
+- `src/evaluation` (consumes typed records/dataset splits)
 
 ## Related Documentation
-- docs/data/data_governance.md
+- `docs/src/data/data.md`
+- `docs/templates/exp_config.yaml`
+- `docs/data/data_governance.md`
+- `docs/data/pipeline_architecture.md`

@@ -40,9 +40,11 @@ evaluation:
   metrics:
     - ndcg_at_k
     - precision_at_k
-    - accuracy
+  k_values:
+    - 5
   top_k: 5
   benchmark_runs: 1
+  progress_log_interval: 1000
   max_test_samples: 3
 
 output:
