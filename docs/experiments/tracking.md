@@ -31,7 +31,7 @@ The repository includes an experiments directory:
 
 ```
 experiments/
-    README.md
+    config/
     logs/
     results/
 ```
@@ -45,58 +45,81 @@ These directories exist locally for structured output only.
 
 ---
 
-# 3. Experiment ID Convention
+# 3. Experiment and Run ID Convention
 
-Each experiment must use the following format:
+Experiments are identified by `experiment.id` in config files.
+
+Current convention:
 
 ```
-EXP-YYYYMMDD-XX
+exp_<NNN>
 ```
 
 Example:
 
 ```
-EXP-20260213-01
+exp_001
 ```
 
-This ID must appear in:
+At runtime, `src/config/config_loader.py` injects a `run_id` using:
 
-* The result file name
-* The metadata log
-* The notebook header (if applicable)
-* The commit message (recommended)
+```
+<experiment_id>_<YYYYMMDD_HHMMSS>
+```
+
+Example:
+
+```
+exp_001_20260323_171347
+```
+
+This produces output directories in the form:
+
+`experiments/results/<experiment_id>/<run_id>/`
 
 ---
 
 # 4. Required Experiment Metadata
 
-Each experiment must generate a structured JSON file containing at minimum:
+Each run must persist structured evaluation output (currently `evaluation.json`)
+that contains one result object per `(dataset, model)` pair.
+
+Current output shape:
 
 ```json
-{
-  "experiment_id": "EXP-20260213-01",
-  "model_name": "baseline_model",
-  "dataset_id": "v1",
-  "random_seed": 42,
-  "hyperparameters": {},
-  "evaluation_metrics": {},
-  "timestamp": "ISO-8601",
-  "git_commit": "commit_hash"
-}
+[
+  {
+    "dataset": "dataset_0",
+    "model": "logistic_regression",
+    "metrics": {
+      "ndcg@5": 0.0,
+      "precision@5": 0.0
+    },
+    "latency_ms": 0.0,
+    "memory_bytes": 0.0,
+    "model_size_mb": 0.0,
+    "constraint_violations": {},
+    "samples_evaluated": 0
+  }
+]
 ```
 
-Required fields:
+Required per-result fields:
 
-* experiment_id
-* model_name
-* dataset_id
-* random_seed
-* hyperparameters
-* evaluation_metrics (core metrics only)
-* timestamp
-* git_commit
+* dataset
+* model
+* metrics
+* latency_ms
+* memory_bytes
+* model_size_mb
+* constraint_violations
+* samples_evaluated
 
-Free-form notes may be included but may not replace structured fields.
+Optional per-result fields:
+
+* interrupted (boolean; present only when run is user-interrupted and partial model metrics are saved)
+
+Run metadata (`experiment.id`, `run_id`) is encoded in the output directory path.
 
 ---
 
@@ -105,7 +128,7 @@ Free-form notes may be included but may not replace structured fields.
 Experiment outputs must:
 
 * Be saved as structured JSON or CSV
-* Be written to `experiments/results/`
+* Be written under `experiments/results/<experiment_id>/<run_id>/`
 * Not overwrite previous runs unless explicitly intended
 * Be reproducible from the same commit
 
@@ -118,7 +141,7 @@ Model binaries and large artifacts must not be committed.
 If experiments are conducted in notebooks:
 
 * The notebook must still generate structured metadata files.
-* The experiment_id must appear in the notebook header.
+* The notebook should reference the same `experiment.id` used in config when reporting results.
 * Re-running the notebook with the same seed must reproduce identical metrics.
 
 Notebook cell output alone is not valid experiment evidence.
@@ -164,8 +187,8 @@ To reproduce an experiment, a reviewer must be able to:
 
 1. Checkout the recorded commit.
 2. Install dependencies.
-3. Run the experiment script.
-4. Regenerate identical metrics using the same seed.
+3. Run `python main.py experiments/config/exp_config.yaml` (or the recorded config path).
+4. Regenerate equivalent metrics using the same seed/config.
 
 If metrics cannot be reproduced, the experiment is invalid.
 

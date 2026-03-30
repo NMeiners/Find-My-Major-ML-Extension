@@ -29,9 +29,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          pip install pytest
+          if [ -f environment/requirements.txt ]; then pip install -r environment/requirements.txt; fi
+          if [ -f environment/requirements-dev.txt ]; then pip install -r environment/requirements-dev.txt; fi
 
       - name: Check importability
         run: python -c "import src"
