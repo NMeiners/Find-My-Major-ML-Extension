@@ -146,6 +146,7 @@ evaluation:
   metrics:
     - ndcg_at_k
     - precision_at_k
+    - recall_at_k  # Add recall_at_k to the list of metrics
   k_values:
     - 5
   benchmark_runs: 1

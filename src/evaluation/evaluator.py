@@ -44,7 +44,7 @@ from src.data.schemas import TrainingRecord
 from src.evaluation.metrics import compute_all_metrics
 from src.evaluation.benchmark import benchmark_model_inference, get_model_size_mb
 
-_SUPPORTED_METRICS = {"ndcg_at_k", "precision_at_k"}
+_SUPPORTED_METRICS = {"ndcg_at_k", "precision_at_k", "recall_at_k"} # <--- ADD recall_at_k
 _REQUIRED_PREDICTION_COLUMNS = ("Title", "Career Category", "Match_Score")
 
 
@@ -88,6 +88,8 @@ def _filter_metric_results(
         if key.startswith("ndcg@") and "ndcg_at_k" in selected_metrics:
             filtered[key] = value
         elif key.startswith("precision@") and "precision_at_k" in selected_metrics:
+            filtered[key] = value
+        elif key.startswith("recall@") and "recall_at_k" in selected_metrics: # <--- ADD THESE TWO LINES
             filtered[key] = value
 
     return filtered
