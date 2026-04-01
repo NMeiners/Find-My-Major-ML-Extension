@@ -47,7 +47,7 @@ import numpy as np
 from src.config.config_loader import load_config
 from src.data.loader import load_training_records, split_training_records
 from src.evaluation import Dataset, evaluate_experiment
-from src.evaluation.reporting import save_results_to_file
+from src.evaluation.reporting import save_results_to_file, save_results_to_csv
 from src.models import MODEL_REGISTRY
 
 
@@ -224,6 +224,13 @@ def main():
             output_dir=output_dir,
         )
         print(f"Evaluation results saved to {output_path}")
+
+    if config['output'].get('save_metrics_csv', False):
+        csv_path = save_results_to_csv(
+            evaluation_results,
+            output_dir=output_dir,
+        )
+        print(f"Evaluation CSV exported to {csv_path}")
 
     if config['output'].get('save_models', False):
         print(
