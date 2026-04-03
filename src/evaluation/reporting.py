@@ -30,6 +30,7 @@ Related Docs:
   - docs/src/evaluation/evaluation.md
 """
 
+import csv
 import json
 from pathlib import Path
 from typing import List, Dict, Any
@@ -85,6 +86,84 @@ def format_evaluation_results(results: List[Dict[str, Any]]) -> str:
                 lines.append(f"    {constraint}: {value}")
 
     return "\n".join(lines)
+
+
+def _get_csv_headers(results: List[Dict[str, Any]]) -> list[str]:
+    base_fields = [
+        'model',
+        'dataset',
+        'latency_ms',
+        'memory_bytes',
+        'model_size_mb',
+        'samples_evaluated',
+        'interrupted',
+    ]
+
+    metric_fields = sorted({
+        metric_name
+        for result in results
+        for metric_name in result.get('metrics', {}).keys()
+    })
+
+    violation_fields = sorted({
+        violation_name
+        for result in results
+        for violation_name in result.get('constraint_violations', {}).keys()
+    })
+
+    return base_fields + metric_fields + violation_fields
+
+
+def save_results_to_csv(
+    results: List[Dict[str, Any]],
+    output_dir: Path,
+    file_name: str = "evaluation.csv",
+) -> Path:
+    """
+    Name: save_results_to_csv
+
+    Purpose:
+      Exports flattened evaluation results to a CSV file.
+
+    Inputs:
+      - results: List[Dict[str, Any]] — evaluation results to export
+      - output_dir: Path — output directory path
+      - file_name: str — CSV file name
+
+    Outputs:
+      - Path — path to saved CSV file
+
+    Raises / Errors:
+      - IOError: if file cannot be written
+
+    Notes:
+      - Writes header row using metric and constraint names discovered in results
+      - Supports empty results by exporting a header-only CSV
+    """
+    output_path = output_dir / file_name
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fieldnames = _get_csv_headers(results)
+
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for result in results:
+            row = {
+                'model': result.get('model'),
+                'dataset': result.get('dataset'),
+                'latency_ms': result.get('latency_ms'),
+                'memory_bytes': result.get('memory_bytes'),
+                'model_size_mb': result.get('model_size_mb'),
+                'samples_evaluated': result.get('samples_evaluated'),
+                'interrupted': result.get('interrupted', False),
+            }
+            row.update(result.get('metrics', {}))
+            row.update(result.get('constraint_violations', {}))
+            writer.writerow(row)
+
+    return output_path
 
 
 def save_results_to_file(results: List[Dict[str, Any]],
