@@ -77,6 +77,8 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Run ML training pipeline with config file.")
     parser.add_argument('config_path', help='Path to the experiment configuration YAML file')
+    parser.add_argument('--export-csv', action='store_true', default=False,
+                        help='Export evaluation results to CSV after run')
 
     args = parser.parse_args()
 
@@ -225,7 +227,7 @@ def main():
         )
         print(f"Evaluation results saved to {output_path}")
 
-    if config['output'].get('save_metrics_csv', False):
+    if config['output'].get('save_metrics_csv', False) or args.export_csv:
         csv_path = save_results_to_csv(
             evaluation_results,
             output_dir=output_dir,
