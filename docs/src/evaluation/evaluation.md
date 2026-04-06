@@ -4,6 +4,7 @@
 Owns evaluation orchestration and reporting for trained recommendation models.
 This includes:
 - Running model evaluation across datasets
+- Scheduling dataset/model experiment jobs via multiprocessing
 - Computing rank-based recommendation metrics
 - Benchmarking latency/memory/model-size proxies
 - Saving/loading formatted evaluation artifacts
@@ -15,6 +16,7 @@ This module does NOT implement model training algorithms or raw CSV loading.
 - `Dataset(train_records, test_records, feature_columns, label_column='career_category')`
   - `split()` returns train/test DataFrames
 - `evaluate_experiment(datasets, models, onet_db, config, output_path=None)`
+- `run_single_experiment(dataset_config, model_config, config)`
 - `evaluate_model(model, dataset, onet_db, config)`
 - `save_evaluation_results(results, output_path)`
 - `compute_all_metrics(predictions, ground_truth_category, k_values)`
@@ -44,9 +46,16 @@ This module does NOT implement model training algorithms or raw CSV loading.
 
 ## Data Contracts
 - Inputs:
-  - `datasets`: list of `Dataset`
-  - `models`: list implementing `train`, `test`, `get_name`
-  - `onet_db`: DataFrame used by model `test()` for ranking
+  - `evaluate_experiment` consumes dataset/model matrices from config:
+    - `config.datasets`: list of dataset rows
+    - `config.models`: list of model rows
+  - `config.training.parallel_jobs`: max worker process count (defaults to 2 if missing)
+  - `datasets`, `models`, `onet_db` parameters remain for interface compatibility
+    but are not used for process job execution
+  - Worker-level inputs:
+    - `dataset_config`: one entry from `config.datasets`
+    - `model_config`: one entry from `config.models`
+    - `onet_db_path`: CSV path loaded inside each worker process
   - `config.evaluation` keys currently consumed by evaluator:
     - `metrics` (optional; supported: `ndcg_at_k`, `precision_at_k`; defaults to both)
     - `k_values` (optional, defaults to `[top_k]`; each value must be `<= top_k`)
@@ -63,9 +72,19 @@ This module does NOT implement model training algorithms or raw CSV loading.
     - `constraint_violations`
     - `samples_evaluated`
     - `interrupted` (optional; `true` when user interruption occurs after partial sample evaluation)
+    - `run_id` (copied from `config.run.run_id`)
+  - Aggregate output remains `evaluation.json` under the run directory.
+  - Additional per-job outputs are stored as JSON files under `<run_dir>/per_experiment/`.
 
 ## Constraints
 - Metric implementations are centralized in `metrics.py`.
+- Parallelism is applied only at the experiment job level:
+  one `(dataset_config, model_config)` pair per process task.
+- No threading is used for experiment scheduling.
+- Each worker loads dataset rows and O*NET data locally; no global preloaded dataset objects are shared.
+- If a model config contains `parameters.n_jobs`, evaluator forces it to `1`
+  before model construction to avoid nested parallelism.
+- Job failures are isolated: failed worker futures are logged and skipped while other jobs continue.
 - Unsupported values in `evaluation.metrics` raise a configuration error.
 - Invalid `k_values` (non-positive or greater than `top_k`) raise a configuration error.
 - Evaluation loop computes per-sample metrics and aggregates averages.
