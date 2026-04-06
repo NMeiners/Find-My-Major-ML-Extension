@@ -121,8 +121,8 @@ def main():
     if not os.path.isfile(onet_db_path):
         raise FileNotFoundError(f"O*NET DB file not found: {onet_db_path}")
 
-    dataset_count = len(config.get('datasets', []))
-    model_count = len(config.get('models', []))
+    dataset_count = sum(1 for d in config.get('datasets', []) if d.get('enabled', True))
+    model_count = sum(1 for m in config.get('models', []) if m.get('enabled', True))
     print(f"\n{dataset_count} dataset config(s), {model_count} model config(s) discovered.")
 
     # Run evaluation across all datasets and models

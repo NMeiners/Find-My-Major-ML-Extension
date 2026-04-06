@@ -11,31 +11,57 @@ experiment:
 
 # ============================================================
 # Dataset Matrix
-# Each row = one dataset configuration
+# Outer loop — each enabled dataset is run against every enabled model.
+#
+# Knobs:
+#   enabled         — set false to skip this dataset without deleting it
+#   train_path      — swap to try a completely different dataset
+#   test_path       — separate held-out test set (omit to use split: below)
+#   split           — train/val/test fractions when no test_path is given
+#   shuffle         — randomize record order before splitting
 # ============================================================
 
-onet_db_path: docs/data/master_careers_riasec_categories.csv  # O*NET career database — used for training AND job ranking
+onet_db_path: docs/data/master_careers_riasec_categories.csv  # O*NET career database — used for job ranking
 
 datasets:
 
-  # Row 1 — O*NET as train, Kaggle as test
+  # Dataset 1 — O*NET as train, Kaggle as test
   - name: onet_kaggle
+    enabled: true
     train_path: docs/data/master_careers_riasec_categories.csv
     test_path: docs/data/Kaggle_Cleaned_Mapped_Categories.csv
-
     split: null
     shuffle: false
+
+  # Dataset 2 — Kaggle only, auto-split (uncomment train_path / set enabled: true to use)
+  # - name: kaggle_split
+  #   enabled: false
+  #   train_path: docs/data/Kaggle_Cleaned_Mapped_Categories.csv
+  #   test_path: null
+  #   split:
+  #     train: 0.70
+  #     validation: 0.15
+  #     test: 0.15
+  #   shuffle: true
 
 
 # ============================================================
 # Model Matrix
-# Each row = one model training configuration
+# Inner loop — each enabled model is trained and evaluated on every enabled dataset.
+#
+# Knobs:
+#   enabled         — set false to cut a model without deleting it
+#   parameters      — tweak any sklearn hyperparameter here
+#   x_features      — change which input features are used (RIASEC subsets, derived features, etc.)
+#   y_features      — change the prediction target (must match a column in the dataset)
+#   top_n_categories — number of career categories to shortlist before job ranking
 # ============================================================
 
 models:
 
-  # Row 1
+  # Model 1 — Logistic Regression
   - model: logistic_regression
+    enabled: true
 
     parameters:
       max_iter: 1000
@@ -53,8 +79,9 @@ models:
     y_features:
       - Career Category
 
-  # Row 2
+  # Model 2 — Random Forest
   - model: random_forest
+    enabled: true
 
     parameters:
       n_estimators: 200
@@ -72,8 +99,9 @@ models:
     y_features:
       - Career Category
 
-  # Row 3
+  # Model 3 — Gradient Boosting
   - model: gradient_boosting
+    enabled: true
 
     parameters:
       n_estimators: 100
@@ -91,8 +119,9 @@ models:
     y_features:
       - Career Category
 
-  # Row 4
+  # Model 4 — Heuristic (cosine similarity baseline, no training)
   - model: heuristic
+    enabled: true
 
     parameters:
       top_n_categories: 3  # unused by heuristic; kept for interface consistency
@@ -108,8 +137,9 @@ models:
     y_features:
       - Career Category
 
-  # Row 5
+  # Model 5 — KNN
   - model: knn
+    enabled: true
 
     parameters:
       n_neighbors: 5

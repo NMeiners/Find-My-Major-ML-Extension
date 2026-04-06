@@ -93,7 +93,12 @@ def _build_experiment_jobs(config: Dict[str, Any]) -> List[Tuple[Dict[str, Any],
 
     jobs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
     for dataset_cfg in dataset_configs:
+        if not dataset_cfg.get('enabled', True):
+            print(f"Skipping dataset '{dataset_cfg.get('name', '?')}' (enabled: false)", flush=True)
+            continue
         for model_cfg in model_configs:
+            if not model_cfg.get('enabled', True):
+                continue
             model_name = model_cfg.get('model')
             if model_name not in MODEL_REGISTRY:
                 print(
