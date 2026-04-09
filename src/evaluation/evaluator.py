@@ -152,11 +152,12 @@ def _write_single_experiment_result(
     model_name = _sanitize_path_component(str(result.get('model', 'model')))
     safe_run_id = _sanitize_path_component(run_id)
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     per_experiment_dir = output_path.parent / 'per_experiment'
-    file_name = f"{safe_run_id}_{job_index:03d}_{dataset_name}_{model_name}.json"
+    file_name = f"{job_index:03d}_{dataset_name}_{model_name}.json"
     per_experiment_path = per_experiment_dir / file_name
 
-    per_experiment_path.parent.mkdir(parents=True, exist_ok=True)
+    per_experiment_dir.mkdir(parents=True, exist_ok=True)
     with open(per_experiment_path, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, default=str)
 
