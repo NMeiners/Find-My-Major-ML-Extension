@@ -32,8 +32,9 @@ Related Docs:
 import unittest
 import tempfile
 import os
+import csv
 from pathlib import Path
-from src.evaluation.reporting import format_evaluation_results, save_results_to_file, load_results_from_file
+from src.evaluation.reporting import format_evaluation_results, save_results_to_file, save_results_to_csv, load_results_from_file
 
 
 class TestFormatEvaluationResults(unittest.TestCase):
@@ -120,6 +121,44 @@ class TestSaveLoadResults(unittest.TestCase):
         # Check file path
         expected_path = Path(self.temp_dir) / "test_exp" / "evaluation.json"
         self.assertEqual(output_path, expected_path)
+
+    def test_save_results_to_csv(self):
+        """Test saving results to CSV."""
+        output_path = save_results_to_csv(self.test_results, Path(self.temp_dir) / "test_exp_csv")
+
+        self.assertTrue(output_path.exists())
+        self.assertEqual(output_path, Path(self.temp_dir) / "test_exp_csv" / "evaluation.csv")
+
+        with open(output_path, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['model'], 'test_model')
+        self.assertEqual(rows[0]['dataset'], 'test_dataset')
+        self.assertEqual(rows[0]['ndcg@5'], '0.75')
+        self.assertEqual(rows[0]['latency_ms'], '10.0')
+
+    def test_save_results_to_csv_empty_results(self):
+        """Test saving an empty result list to CSV."""
+        output_path = save_results_to_csv([], Path(self.temp_dir) / "empty_csv")
+
+        self.assertTrue(output_path.exists())
+
+        with open(output_path, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        self.assertEqual(len(rows), 0)
+        self.assertEqual(reader.fieldnames, [
+            'model',
+            'dataset',
+            'latency_ms',
+            'memory_bytes',
+            'model_size_mb',
+            'samples_evaluated',
+            'interrupted',
+        ])
 
     def test_load_results_from_file(self):
         """Test loading results from file."""

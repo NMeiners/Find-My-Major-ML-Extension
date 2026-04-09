@@ -31,7 +31,7 @@ Related Docs:
 from .evaluator import evaluate_experiment, evaluate_model, Dataset, save_evaluation_results
 from .metrics import compute_all_metrics, cosine_similarity, ndcg_at_k, precision_at_k
 from .benchmark import benchmark_model_inference, get_model_size_mb
-from .reporting import format_evaluation_results, save_results_to_file, load_results_from_file
+from .reporting import format_evaluation_results, save_results_to_file, save_results_to_csv, load_results_from_file
 from .fairness import (compute_category_distribution, compute_fairness_score,
                       detect_overrepresented_categories, detect_underrepresented_categories)
 
@@ -48,6 +48,7 @@ __all__ = [
     'get_model_size_mb',
     'format_evaluation_results',
     'save_results_to_file',
+    'save_results_to_csv',
     'load_results_from_file',
     'compute_category_distribution',
     'compute_fairness_score',
