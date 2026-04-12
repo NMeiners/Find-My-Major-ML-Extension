@@ -92,4 +92,6 @@ def rank_jobs(
 
     # Return top-N by similarity score
     best = candidates.sort_values(by="Match_Score", ascending=False).head(top_n_jobs)
-    return best[["Title", category_col, "Match_Score"]].reset_index(drop=True)
+    
+    # NEW: Include O*NET-SOC Code in the output so F1 can map to MSU Majors
+    return best[["O*NET-SOC Code", "Title", category_col, "Match_Score"]].reset_index(drop=True)
