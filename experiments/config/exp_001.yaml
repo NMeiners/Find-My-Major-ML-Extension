@@ -201,6 +201,7 @@ output:
   save_models: true
   save_predictions: true
   save_metrics: true
+  visual_output: false
 
 # ============================================================
 # Export
