@@ -34,7 +34,10 @@ class CareerRecommender:
         candidates["Match_Score"] = cosine_similarity(student_vector, job_vectors)[0]
 
         # D. Return the full list ranked by score
-        return candidates.sort_values(by="Match_Score", ascending=False)
+        sorted_candidates = candidates.sort_values(by="Match_Score", ascending=False)
+        
+        # Convert to a JSON string (orient="records" makes it a standard list of dictionaries)
+        return sorted_candidates.to_json(orient="records")
 
 # Example Usage for the F1 Team:
 # engine = CareerRecommender()
