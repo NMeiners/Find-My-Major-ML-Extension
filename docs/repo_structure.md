@@ -146,7 +146,7 @@ Defines reproducible development environments.
 
 **Examples:**
 
-* `requirements.txt`
+* `environment/requirements.txt`
 * `environment.yml`
 * Colab setup instructions
 

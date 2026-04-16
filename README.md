@@ -86,7 +86,7 @@ This means the project has structure and standards in place, while core model/ev
 ### Prerequisites
 
 - Python 3.11+
-- Dependencies: `pip install -r requirements.txt`
+- Dependencies: `pip install -r environment/requirements.txt`
 
 ### Running Experiments
 
@@ -108,7 +108,7 @@ This will:
 For development, use the provided dev container (`.devcontainer/`) or install dependencies locally:
 
 ```bash
-pip install -r requirements.txt
+pip install -r environment/requirements.txt
 ```
 
 Run tests with:
