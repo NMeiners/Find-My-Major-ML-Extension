@@ -1,3 +1,4 @@
+import json
 import pandas as pd
 from scripts.inference_engine import CareerRecommender
 
@@ -23,14 +24,17 @@ def test_inference():
     print(f"\n--- Running Inference for Realistic-Investigative Student ---")
     # 3. Run the engine to get ALL ~900 jobs ranked
     results = engine.get_all_recommendations(test_student)
+    if isinstance(results, str):
+        results = json.loads(results)
+    results_df = pd.DataFrame(results)
 
     # 4. Display the results
-    print(f"Total Careers Ranked: {len(results)}")
+    print(f"Total Careers Ranked: {len(results_df)}")
     print("\nTop 10 Recommendations:")
-    print(results[['O*NET-SOC Code', 'Title', 'Career Category', 'Match_Score']].head(10))
+    print(results_df[['O*NET-SOC Code', 'Title', 'Career Category', 'Match_Score']].head(10))
 
     # 5. Simple Validation
-    if not results.empty:
+    if not results_df.empty:
         print("\n✅ TEST SUCCESSFUL: The engine returned ranked results.")
     else:
         print("\n❌ TEST FAILED: No results returned.")
