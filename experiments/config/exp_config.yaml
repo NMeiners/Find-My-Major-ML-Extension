@@ -100,6 +100,7 @@ output:
   save_predictions: false
   save_metrics: true
   save_metrics_csv: true
+  visual_output: true
 
 # ============================================================
 # Export
