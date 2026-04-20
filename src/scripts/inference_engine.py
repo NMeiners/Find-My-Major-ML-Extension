@@ -1,7 +1,45 @@
+"""
+File: inference_engine.py
+Path: src/scripts/inference_engine.py
+
+Purpose:
+  Provides a unified interface for loading trained ONNX models and career databases,
+  and generating ranked job recommendations via two-stage retrieval (category prediction
+  + cosine similarity ranking).
+
+Original Author(s):
+  - Nathan Meiners (F1 Team)
+  - AI Assistant
+
+AI Tools Used:
+  - GitHub Copilot - Initial implementation
+  - Claude Sonnet 4.6 - Documentation
+
+Editors:
+  - AI Assistant (2026-04-20) — Added file header and relocated from scripts/ to src/scripts/
+
+Last Editor:
+  - AI Assistant
+
+Last Edit Date:
+  2026-04-20
+
+Assumptions & Constraints:
+  - ONNX model must be trained with 6 RIASEC input features
+  - Jobs database JSON must contain Title, Career Category, and 6 RIASEC columns
+  - Student scores are expected in [0.0, 1.0] range
+  - Cosine similarity used for ranking
+
+Related Docs:
+  - docs/src/models/models.md
+  - docs/evaluation_workflow.md
+"""
+
 import pandas as pd
 import numpy as np
 import onnxruntime as ort
 from sklearn.metrics.pairwise import cosine_similarity
+
 
 class CareerRecommender:
     def __init__(self, model_path="riasec_model.onnx", db_path="riasec_jobs_db.json"):
@@ -13,7 +51,23 @@ class CareerRecommender:
 
     def get_all_recommendations(self, student_scores):
         """
-        Takes 6 RIASEC scores [0.0 - 1.0] and returns ALL ~900 jobs ranked.
+        Name: get_all_recommendations
+
+        Purpose:
+          Takes 6 RIASEC scores [0.0 - 1.0] and returns ALL ~900 jobs ranked by similarity.
+
+        Inputs:
+          - student_scores: list[float] — 6 RIASEC scores in [0.0, 1.0]
+
+        Outputs:
+          - str — JSON string of ranked career recommendations with Match_Score
+
+        Raises / Errors:
+          - RuntimeError: if ONNX inference fails
+
+        Notes:
+          - Returns full database ranked by cosine similarity
+          - Used primarily by frontend for "all jobs" view
         """
         # A. Predict the Top 3 Categories using the ONNX model
         input_name = self.session.get_inputs()[0].name
@@ -38,6 +92,7 @@ class CareerRecommender:
         
         # Convert to a JSON string (orient="records" makes it a standard list of dictionaries)
         return sorted_candidates.to_json(orient="records")
+
 
 # Example Usage for the F1 Team:
 # engine = CareerRecommender()
