@@ -35,6 +35,7 @@ Related Docs:
   - docs/evaluation_workflow.md
 """
 
+import json
 import pandas as pd
 import numpy as np
 import onnxruntime as ort
@@ -72,26 +73,79 @@ class CareerRecommender:
         # A. Predict the Top 3 Categories using the ONNX model
         input_name = self.session.get_inputs()[0].name
         input_data = np.array([student_scores], dtype=np.float32)
-        raw_probs = self.session.run(None, {input_name: input_data})[1][0]
-        
-        # Sort categories by probability
-        categories = sorted(raw_probs.items(), key=lambda x: x[1], reverse=True)
+        raw_output = self.session.run(None, {input_name: input_data})
+
+        if len(raw_output) > 1:
+            raw_probs = raw_output[1]
+        else:
+            raw_probs = raw_output[0]
+
+        if isinstance(raw_probs, list):
+            if len(raw_probs) == 1 and isinstance(raw_probs[0], dict):
+                raw_probs = raw_probs[0]
+            elif len(raw_probs) > 0 and isinstance(raw_probs[0], dict):
+                raw_probs = raw_probs[0]
+            else:
+                raise ValueError(
+                    "ONNX category output list must contain a mapping of category names to probabilities."
+                )
+
+        if isinstance(raw_probs, np.ndarray):
+            if raw_probs.ndim == 2 and raw_probs.shape[0] == 1:
+                raw_probs = raw_probs[0]
+            raise ValueError(
+                "ONNX category output must be a mapping of category names to probabilities."
+            )
+
+        if isinstance(raw_probs, dict):
+            categories = sorted(raw_probs.items(), key=lambda x: x[1], reverse=True)
+        else:
+            raise ValueError(
+                f"Unexpected ONNX model output format: {type(raw_probs).__name__}"
+            )
+
         top_3_categories = [cat[0] for cat in categories[:3]]
 
         # B. Filter the database to only those 3 categories
         candidates = self.db[self.db["Career Category"].isin(top_3_categories)].copy()
 
+        if candidates.empty:
+            return json.dumps([])
+
         # C. Calculate Cosine Similarity for every job in those categories
         student_vector = np.array([student_scores])
         job_vectors = candidates[self.features].values
-        
+
         candidates["Match_Score"] = cosine_similarity(student_vector, job_vectors)[0]
 
         # D. Return the full list ranked by score
         sorted_candidates = candidates.sort_values(by="Match_Score", ascending=False)
-        
+
         # Convert to a JSON string (orient="records" makes it a standard list of dictionaries)
         return sorted_candidates.to_json(orient="records")
+
+    def get_top_n_recommendations(self, student_scores, top_n=3):
+        """
+        Name: get_top_n_recommendations
+
+        Purpose:
+          Returns the top N ranked career recommendations from the inference engine.
+
+        Inputs:
+          - student_scores: list[float] — 6 RIASEC scores in [0.0, 1.0]
+          - top_n: int — number of top results to return
+
+        Outputs:
+          - str — JSON string of top N recommendations
+        """
+        all_results = self.get_all_recommendations(student_scores)
+        if isinstance(all_results, str):
+            parsed = json.loads(all_results)
+        else:
+            parsed = all_results
+
+        top_n_results = parsed[:top_n]
+        return json.dumps(top_n_results)
 
 
 # Example Usage for the F1 Team:

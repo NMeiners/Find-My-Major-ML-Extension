@@ -35,7 +35,7 @@ Related Docs:
 """
 
 import pandas as pd
-from src.models.gradient_boosting import GradientBoostingModel
+from src.scripts.inference_engine import CareerRecommender
 
 
 def analyze_batch(batch_size: int = 10) -> None:
@@ -67,34 +67,31 @@ def analyze_batch(batch_size: int = 10) -> None:
     # 2. Define the 6 RIASEC features
     features = ["Realistic", "Investigative", "Artistic", "Social", "Enterprising", "Conventional"]
 
-    # 3. Initialize and train the champion model
-    # We use the parameters from your tuned production config
-    model = GradientBoostingModel(
-        x_features=features,
-        y_feature="Career Category",
-        parameters={"n_estimators": 100, "learning_rate": 0.1, "max_depth": 5},
-        top_n_jobs=20,        # Support "Reject & Replace"
-        top_n_categories=3
-    )
-
-    print("Training champion model...")
-    model.train(master_df[features], master_df["Career Category"])
+    # 3. Initialize the career recommender
+    recommender = CareerRecommender()
 
     # 4. Select a batch of users to analyze (e.g., first 10 users)
+    actual_features = [feature for feature in features if feature in test_df.columns]
+    if len(actual_features) < len(features):
+        numeric_features = [
+            col for col in test_df.select_dtypes(include='number').columns
+            if col not in {'major'}
+        ]
+        actual_features = numeric_features[:6]
 
     for i in range(batch_size):
         student = test_df.iloc[[i]]
         actual_major = student['major'].values[0]
+        student_scores = student[actual_features].iloc[0].tolist()
 
         print(f"\n=== Student {i+1} ===")
         print(f"Actual Major: {actual_major}")
 
         # Run inference
-        recommendations = model.test(student[features], master_df)
+        recommendations = recommender.get_top_n_recommendations(student_scores, top_n=3)
 
         print("Top 3 Recommendations:")
-        for idx, row in recommendations.head(3).iterrows():
-            print(f"  {row['Title']}: {row['Match_Score']:.4f}")
+        print(recommendations)
 
 
 if __name__ == "__main__":

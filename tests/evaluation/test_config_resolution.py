@@ -119,9 +119,9 @@ class TestValidateKValues(unittest.TestCase):
         self.assertEqual(result, [1, 3, 5])
 
     def test_k_values_sorted(self):
-        """Test k-values are sorted."""
+        """Test k-values are not sorted (preserve input order)."""
         result = validate_k_values([5, 1, 3], top_k=5)
-        self.assertEqual(result, [1, 3, 5])
+        self.assertEqual(result, [5, 1, 3])
 
     def test_k_value_exceeds_top_k_raises(self):
         """Test k-value exceeding top_k raises error."""

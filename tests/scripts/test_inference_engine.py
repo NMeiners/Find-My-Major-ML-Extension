@@ -194,3 +194,41 @@ class TestCareerRecommenderOutput:
         import json
         parsed = json.loads(result)
         assert isinstance(parsed, list)
+
+    @patch('src.scripts.inference_engine.ort.InferenceSession')
+    @patch('pandas.read_json')
+    def test_recommendation_output_accepts_list_of_dict_output(self, mock_read_json, mock_session):
+        """
+        Test that ONNX outputs wrapped in a single-element list are accepted.
+        """
+        # Arrange
+        mock_session_instance = MagicMock()
+        mock_session.return_value = mock_session_instance
+        mock_input = MagicMock()
+        mock_input.name = 'input'
+        mock_session_instance.get_inputs.return_value = [mock_input]
+        mock_session_instance.run.return_value = [None, [{'Category1': 0.8, 'Category2': 0.2}]]
+
+        mock_read_json.return_value = pd.DataFrame({
+            'Title': ['Software Engineer', 'Data Scientist'],
+            'Career Category': ['IT', 'IT'],
+            'Realistic': [0.5, 0.6],
+            'Investigative': [0.8, 0.9],
+            'Artistic': [0.2, 0.3],
+            'Social': [0.4, 0.5],
+            'Enterprising': [0.6, 0.7],
+            'Conventional': [0.7, 0.6]
+        })
+
+        from src.scripts.inference_engine import CareerRecommender
+        recommender = CareerRecommender('riasec_model.onnx', 'riasec_jobs_db.json')
+
+        # Act
+        student_scores = [0.5, 0.8, 0.2, 0.4, 0.6, 0.7]
+        result = recommender.get_all_recommendations(student_scores)
+
+        # Assert
+        assert isinstance(result, str)
+        import json
+        parsed = json.loads(result)
+        assert isinstance(parsed, list)

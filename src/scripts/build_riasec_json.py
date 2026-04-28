@@ -35,10 +35,10 @@ Related Docs:
   - docs/data/data_governance.md
 """
 
+import joblib
+import onnxruntime as ort
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier
-from skl2onnx import convert_sklearn
-from skl2onnx.common.data_types import FloatTensorType
 
 
 def build_riasec_model():
@@ -66,7 +66,12 @@ def build_riasec_model():
     """
     # 1. Load the pristine 6-Feature Master Data
     print("Loading Master Data...")
-    df = pd.read_csv("docs/data/master_careers_riasec_categories.csv")
+    try:
+        df = pd.read_csv("docs/data/master_careers_riasec_categories.csv")
+    except (FileNotFoundError, pd.errors.EmptyDataError) as exc:
+        raise FileNotFoundError(
+            "Master training data file not found or empty: docs/data/master_careers_riasec_categories.csv"
+        ) from exc
     features = ["Realistic", "Investigative", "Artistic", "Social", "Enterprising", "Conventional"]
 
     # 2. Train the Final Production Model 
@@ -77,6 +82,15 @@ def build_riasec_model():
 
     # 3. Convert and Save the Model to ONNX (For browser compatibility)
     print("Exporting to ONNX...")
+    try:
+        from skl2onnx import convert_sklearn
+        from skl2onnx.common.data_types import FloatTensorType
+    except ImportError as exc:
+        raise ImportError(
+            "skl2onnx is required to export the model to ONNX. "
+            "Install skl2onnx or run build_riasec_model in an environment where it is available."
+        ) from exc
+
     initial_type = [('float_input', FloatTensorType([None, 6]))]
     onx = convert_sklearn(model, initial_types=initial_type)
 

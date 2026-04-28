@@ -65,6 +65,9 @@ def load_evaluation_results(input_path: Path) -> pd.DataFrame:
     if input_path.is_dir():
         input_path = input_path / "evaluation.json"
 
+    if input_path.suffix.lower() == ".csv":
+        return pd.read_csv(input_path)
+
     if not input_path.exists():
         raise FileNotFoundError(f"Evaluation file not found: {input_path}")
 

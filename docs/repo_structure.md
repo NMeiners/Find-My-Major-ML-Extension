@@ -19,6 +19,7 @@ repo/
 ├── .github/
 │   └── workflows/
 ├── docs/
+├── main.py
 ├── models/
 ├── notebooks/
 ├── src/
@@ -74,6 +75,20 @@ docs/
 * Documentation mirrors repository structure where applicable.
 * Structural code changes require corresponding documentation updates.
 * Templates in `docs/templates/` are authoritative.
+
+---
+
+## main.py
+
+**Purpose:**
+Top-level CLI entrypoint for the training and evaluation pipeline. It parses command-line arguments, loads experiment configuration, and delegates execution to stable `src/` modules.
+
+**Rules:**
+
+* Must remain minimal and delegate core logic to `src/`.
+* Must include the Source Code File Header Template and AI tool disclosure.
+* Should be executable from the repository root.
+* Should document its configuration-driven execution path and supported command-line flags.
 
 ---
 

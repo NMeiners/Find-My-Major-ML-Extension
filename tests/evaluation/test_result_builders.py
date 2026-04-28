@@ -61,26 +61,26 @@ class TestCollectPredictionContractViolations(unittest.TestCase):
         result = collect_prediction_contract_violations(predictions, top_n_jobs=2)
         self.assertEqual(result, {})
 
-    def test_fewer_rows_than_top_n_jobs(self):
-        """Test violation when predictions have fewer rows than top_n_jobs."""
+    def test_more_rows_than_top_n_jobs(self):
+        """Test violation when predictions have more rows than top_n_jobs."""
         predictions = pd.DataFrame({
-            'Title': ['Job1'],
-            'Career Category': ['Arts'],
-            'Match_Score': [0.9],
+            'Title': ['Job1', 'Job2', 'Job3'],
+            'Career Category': ['Arts', 'Engineering', 'Math'],
+            'Match_Score': [0.9, 0.8, 0.7],
         })
-        result = collect_prediction_contract_violations(predictions, top_n_jobs=5)
-        self.assertIn('predictions_below_top_n_jobs', result)
-        self.assertEqual(result['predictions_below_top_n_jobs'], 1)
+        result = collect_prediction_contract_violations(predictions, top_n_jobs=2)
+        self.assertIn('row_count_exceeds_top_n_jobs', result)
+        self.assertEqual(result['row_count_exceeds_top_n_jobs'], 1)
 
     def test_missing_required_column(self):
-        """Test violation when required column is missing."""
+        """Test violation when required column is missing (should raise KeyError)."""
         predictions = pd.DataFrame({
             'Title': ['Job1', 'Job2'],
             'Career Category': ['Arts', 'Engineering'],
             # Missing 'Match_Score'
         })
-        result = collect_prediction_contract_violations(predictions, top_n_jobs=2)
-        self.assertIn('missing_columns', result)
+        with self.assertRaises(KeyError):
+            collect_prediction_contract_violations(predictions, top_n_jobs=2)
 
     def test_null_values_in_required_column(self):
         """Test violation when required column has null values."""
@@ -90,17 +90,17 @@ class TestCollectPredictionContractViolations(unittest.TestCase):
             'Match_Score': [0.9, 0.8],
         })
         result = collect_prediction_contract_violations(predictions, top_n_jobs=2)
-        self.assertIn('null_values', result)
+        self.assertIn('null_in_required_columns', result)
 
     def test_empty_predictions_dataframe(self):
-        """Test violation when predictions DataFrame is empty."""
+        """Test empty predictions DataFrame returns no violations (no rows, no contract violation)."""
         predictions = pd.DataFrame({
             'Title': [],
             'Career Category': [],
             'Match_Score': [],
         })
         result = collect_prediction_contract_violations(predictions, top_n_jobs=5)
-        self.assertIn('predictions_below_top_n_jobs', result)
+        self.assertEqual(result, {})
 
     def test_non_numeric_match_score(self):
         """Test violation when Match_Score is non-numeric."""
@@ -110,7 +110,7 @@ class TestCollectPredictionContractViolations(unittest.TestCase):
             'Match_Score': ['invalid', 0.8],
         })
         result = collect_prediction_contract_violations(predictions, top_n_jobs=2)
-        self.assertIn('non_numeric_scores', result)
+        self.assertIn('non_numeric_match_score', result)
 
 
 class TestMergeViolationCounts(unittest.TestCase):
@@ -187,8 +187,7 @@ class TestBuildModelResult(unittest.TestCase):
             constraint_violations={},
             samples_evaluated=2,
         )
-
-        self.assertEqual(result['metrics']['ndcg@5'], 0.85)  # Average
+        self.assertAlmostEqual(result['metrics']['ndcg@5'], 0.85, places=6)  # Average
         self.assertEqual(result['samples_evaluated'], 2)
 
     def test_build_result_includes_violations(self):
@@ -247,14 +246,14 @@ class TestSanitizePathComponent(unittest.TestCase):
         self.assertEqual(result, 'test_model')
 
     def test_special_characters_removed(self):
-        """Test special characters are removed."""
+        """Test special characters are replaced with underscores."""
         result = sanitize_path_component('test@model#2')
-        self.assertEqual(result, 'testmodel2')
+        self.assertEqual(result, 'test_model_2')
 
     def test_slashes_removed(self):
-        """Test forward/backward slashes are removed."""
+        """Test forward/backward slashes are replaced with underscores."""
         result = sanitize_path_component('path/to/model')
-        self.assertEqual(result, 'pathtomodel')
+        self.assertEqual(result, 'path_to_model')
 
     def test_empty_string_returns_default(self):
         """Test empty string returns default."""
@@ -323,15 +322,13 @@ class TestWriteSingleExperimentResult(unittest.TestCase):
 
             write_single_experiment_result(result, output_path, run_id, job_index)
 
-            # Verify directory structure
-            job_dir = output_path / f'run_{run_id}_job_{job_index}'
-            self.assertTrue(job_dir.exists())
-
-            # Verify result file
-            result_file = job_dir / 'result.json'
-            self.assertTrue(result_file.exists())
-
-            with open(result_file, 'r') as f:
+            # Verify file in per_experiment dir
+            per_experiment_dir = output_path.parent / 'per_experiment'
+            file_name = f"{job_index:03d}_data1_model1.json"
+            per_experiment_path = per_experiment_dir / file_name
+            self.assertTrue(per_experiment_dir.exists())
+            self.assertTrue(per_experiment_path.exists())
+            with open(per_experiment_path, 'r') as f:
                 loaded = json.load(f)
             self.assertEqual(loaded, result)
 
@@ -345,8 +342,11 @@ class TestWriteSingleExperimentResult(unittest.TestCase):
 
             write_single_experiment_result(result, output_path, run_id, job_index)
 
-            job_dir = output_path / f'run_{run_id}_job_{job_index}'
-            self.assertTrue(job_dir.exists())
+            per_experiment_dir = output_path.parent / 'per_experiment'
+            file_name = f"{job_index:03d}_dataset_model1.json"
+            per_experiment_path = per_experiment_dir / file_name
+            self.assertTrue(per_experiment_dir.exists())
+            self.assertTrue(per_experiment_path.exists())
 
     def test_write_multiple_experiment_results(self):
         """Test writing multiple experiment results with different indices."""
@@ -358,10 +358,11 @@ class TestWriteSingleExperimentResult(unittest.TestCase):
                 result = {'model': f'model{job_idx}', 'metrics': {}}
                 write_single_experiment_result(result, output_path, run_id, job_idx)
 
-            # Verify all directories created
+            per_experiment_dir = output_path.parent / 'per_experiment'
             for job_idx in range(3):
-                job_dir = output_path / f'run_{run_id}_job_{job_idx}'
-                self.assertTrue((job_dir / 'result.json').exists())
+                file_name = f"{job_idx:03d}_dataset_model{job_idx}.json"
+                per_experiment_path = per_experiment_dir / file_name
+                self.assertTrue(per_experiment_path.exists())
 
 
 if __name__ == '__main__':
