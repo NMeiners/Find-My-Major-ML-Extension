@@ -167,6 +167,7 @@ def test_export_frontend_artifacts_writes_onnx_and_json(tmp_path, monkeypatch):
         "export": {
             "export_inference_model": True,
             "format": "onnx",
+            "verify_package": False,
         },
     }
 
@@ -199,6 +200,7 @@ def test_export_frontend_artifacts_writes_onnx_and_json(tmp_path, monkeypatch):
 
     assert export_paths["onnx_model"].exists()
     assert export_paths["frontend_db"].exists()
+    assert export_paths["export_package"].exists()
 
     assert export_paths["onnx_model"].read_bytes() == b"mock-onnx"
 

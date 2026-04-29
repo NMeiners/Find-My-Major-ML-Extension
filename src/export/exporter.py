@@ -15,13 +15,14 @@ AI Tools Used:
   - GitHub Copilot - Module implementation
 
 Editors:
-  - AI Assistant (2026-04-29) — Added export module and config-driven ONNX export
+  - AI Assistant (2026-04-29) - Added export module and config-driven ONNX export
+  - AI Assistant (2026-04-30) - Added package and verification support
 
 Last Editor:
   - AI Assistant
 
 Last Edit Date:
-  2026-04-29
+  2026-04-30
 
 Assumptions & Constraints:
   - export_inference_model is enabled in config.export
@@ -36,15 +37,23 @@ Related Docs:
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+import tempfile
+import zipfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from src.models import MODEL_REGISTRY
+from src.scripts.inference_engine import CareerRecommender
 
 EXPORT_MODEL_FILENAME = "riasec_model.onnx"
 EXPORT_DB_FILENAME = "riasec_jobs_db.json"
+EXPORT_MANIFEST_FILENAME = "package_manifest.json"
 DEFAULT_EXPORT_FORMAT = "onnx"
 REQUIRED_FRONTEND_COLUMNS = ["O*NET-SOC Code", "Title"]
 
@@ -61,16 +70,16 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
       Exports frontend artifacts for an experiment run when export is enabled.
 
     Inputs:
-      - config: dict[str, Any] — loaded experiment configuration
-      - output_dir: Path | str — directory where frontend artifacts will be written
+      - config: dict[str, Any] � loaded experiment configuration
+      - output_dir: Path | str � directory where frontend artifacts will be written
 
     Outputs:
-      - dict[str, Path] — paths to the generated ONNX model and frontend JSON database
+      - dict[str, Path] � paths to the generated ONNX model, frontend JSON database, and package
 
     Raises / Errors:
       - KeyError: if required configuration fields are missing
       - FileNotFoundError: if configured data files cannot be found
-      - RuntimeError: if the export model cannot be trained or serialized
+      - RuntimeError: if export verification or upload fails
       - ImportError: if skl2onnx is not installed for ONNX export
     """
     export_cfg = config.get('export', {})
@@ -92,13 +101,15 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
     train_path = dataset_config.get('train_path')
     if not train_path:
         raise KeyError("Enabled dataset configuration is missing 'train_path'.")
-    if not Path(train_path).is_file():
+    train_path = Path(train_path)
+    if not train_path.is_file():
         raise FileNotFoundError(f"Training dataset file not found: {train_path}")
 
     onet_db_path = config.get('onet_db_path')
     if not onet_db_path:
         raise KeyError("Configuration missing 'onet_db_path'.")
-    if not Path(onet_db_path).is_file():
+    onet_db_path = Path(onet_db_path)
+    if not onet_db_path.is_file():
         raise FileNotFoundError(f"O*NET DB file not found: {onet_db_path}")
 
     training_df = pd.read_csv(train_path)
@@ -120,16 +131,52 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
     model.train(training_df[model.x_features], training_df[y_feature])
     sklearn_estimator = _get_wrapped_sklearn_estimator(model)
 
+    model_artifact_path = None
+    save_model_artifact = export_cfg.get(
+        'save_model_artifact',
+        config.get('output', {}).get('save_models', False),
+    )
+    if save_model_artifact:
+        model_artifact_path = _save_trained_model_artifact(
+            sklearn_estimator,
+            output_path,
+            model.get_name(),
+        )
+
     onnx_path = output_path / EXPORT_MODEL_FILENAME
     _save_model_to_onnx(sklearn_estimator, model.x_features, onnx_path)
 
     json_path = output_path / EXPORT_DB_FILENAME
     _save_frontend_json(frontend_df, model.x_features, y_feature, json_path)
 
-    return {
+    package_name = export_cfg.get('package_name', 'riasec_export_package.zip')
+    package_path = output_path / package_name
+    _package_exported_artifacts(
+        onnx_path=onnx_path,
+        json_path=json_path,
+        model_artifact_path=model_artifact_path,
+        package_path=package_path,
+        model_name=model.get_name(),
+        config=config,
+    )
+
+    if export_cfg.get('verify_package', True):
+        _verify_export_package(package_path)
+
+    upload_script = export_cfg.get('upload_script')
+    upload_args = export_cfg.get('upload_arguments', [])
+    if upload_script:
+        _invoke_upload_script(package_path, upload_script, upload_args)
+
+    results = {
         'onnx_model': onnx_path,
         'frontend_db': json_path,
+        'export_package': package_path,
     }
+    if model_artifact_path is not None:
+        results['trained_model'] = model_artifact_path
+
+    return results
 
 
 def _get_first_enabled_dataset(config: dict[str, Any]) -> dict[str, Any]:
@@ -183,6 +230,16 @@ def _get_wrapped_sklearn_estimator(model: Any) -> Any:
     )
 
 
+def _save_trained_model_artifact(sklearn_model: Any, output_path: Path, model_name: str) -> Path:
+    from joblib import dump
+
+    artifact_dir = output_path / 'models'
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / f"{model_name}_trained.pkl"
+    dump(sklearn_model, artifact_path)
+    return artifact_path
+
+
 def _save_model_to_onnx(sklearn_model: Any, feature_columns: list[str], output_path: Path) -> None:
     try:
         from skl2onnx import convert_sklearn
@@ -214,3 +271,68 @@ def _save_frontend_json(
 
     output_df = frontend_df[[*REQUIRED_FRONTEND_COLUMNS, label_column, *feature_columns]]
     output_df.to_json(output_path, orient='records')
+
+
+def _package_exported_artifacts(
+    onnx_path: Path,
+    json_path: Path,
+    model_artifact_path: Path | None,
+    package_path: Path,
+    model_name: str,
+    config: dict[str, Any],
+) -> None:
+    metadata = {
+        'package_name': package_path.name,
+        'model_name': model_name,
+        'run_id': config.get('run', {}).get('run_id'),
+        'exported_at': datetime.now().isoformat(),
+        'format': config.get('export', {}).get('format', DEFAULT_EXPORT_FORMAT),
+    }
+
+    with zipfile.ZipFile(package_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write(onnx_path, onnx_path.name)
+        archive.write(json_path, json_path.name)
+        if model_artifact_path is not None:
+            archive.write(model_artifact_path, model_artifact_path.name)
+        archive.writestr(EXPORT_MANIFEST_FILENAME, json.dumps(metadata, indent=2))
+
+
+def _verify_export_package(package_path: Path) -> None:
+    if not package_path.is_file():
+        raise FileNotFoundError(f"Expected export package not found: {package_path}")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        with zipfile.ZipFile(package_path, mode='r') as archive:
+            archive.extractall(temp_dir_path)
+
+        extracted_model = temp_dir_path / EXPORT_MODEL_FILENAME
+        extracted_db = temp_dir_path / EXPORT_DB_FILENAME
+        if not extracted_model.is_file() or not extracted_db.is_file():
+            raise ExporterError(
+                "Packaged export is malformed: missing ONNX model or frontend database."
+            )
+
+        try:
+            recommender = CareerRecommender(
+                model_path=str(extracted_model),
+                db_path=str(extracted_db),
+            )
+            recommender.get_top_n_recommendations([0.5, 0.5, 0.5, 0.5, 0.5, 0.5], top_n=1)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Export package verification failed: {exc}"
+            ) from exc
+
+
+def _invoke_upload_script(package_path: Path, upload_script: str, upload_args: list[Any]) -> None:
+    script_path = Path(upload_script)
+    if not script_path.is_file():
+        print(
+            f"Upload script configured but not found: {script_path}. "
+            "Package generation completed but upload was skipped."
+        )
+        return
+
+    command = [sys.executable, str(script_path), '--package', str(package_path), *upload_args]
+    subprocess.run(command, check=True)

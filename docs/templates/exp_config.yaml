@@ -108,6 +108,11 @@ output:
 export:
   export_inference_model: false
   format: onnx
+  save_model_artifact: false
+  package_name: riasec_export_package.zip
+  verify_package: true
+  upload_script: null
+  upload_arguments: []
 
 # ============================================================
 # Notes

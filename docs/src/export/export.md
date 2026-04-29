@@ -18,14 +18,26 @@ Artifacts are written into the experiment `output.directory` run folder.
 Supported export config keys:
 - `export.export_inference_model`: boolean
 - `export.format`: string, currently only `onnx`
+- `export.save_model_artifact`: boolean, optionally saves the trained sklearn model artifact alongside ONNX
+- `export.package_name`: string, ZIP filename for packaged export artifacts
+- `export.verify_package`: boolean, performs package validation after export
+- `export.upload_script`: string, optional path to a script that receives `--package <path>` after export
+- `export.upload_arguments`: list, optional additional CLI arguments forwarded to the upload script
 
 Example:
 ```yaml
 export:
   export_inference_model: true
   format: onnx
+  save_model_artifact: false
+  package_name: riasec_export_package.zip
+  verify_package: true
+  upload_script: scripts/upload_export.py
+  upload_arguments: ['--target', 'frontend']
 ```
 
 ## Notes
 - ONNX export depends on `skl2onnx`.
 - Runtime errors are raised if required data files or model configuration are missing.
+- If `export.save_model_artifact` is enabled, the trained model is also persisted to `models/` inside the run folder.
+- The export package includes the ONNX model, career JSON database, and a package manifest.
