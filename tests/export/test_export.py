@@ -88,6 +88,35 @@ def test_export_placeholder():
     assert True  # Placeholder
 
 
+def test_save_model_to_onnx_reports_ml_dtypes_incompatibility(tmp_path, monkeypatch):
+    class DummyModel:
+        pass
+
+    def fake_convert_sklearn(model, initial_types):
+        raise AttributeError("module 'ml_dtypes' has no attribute 'float4_e2m1fn'")
+
+    class MockFloatTensorType:
+        def __init__(self, shape):
+            self.shape = shape
+
+    mock_skl2onnx = type(sys)("skl2onnx")
+    mock_skl2onnx.convert_sklearn = fake_convert_sklearn
+    mock_common = type(sys)("skl2onnx.common")
+    mock_datatypes = type(sys)("skl2onnx.common.data_types")
+    mock_datatypes.FloatTensorType = MockFloatTensorType
+    mock_common.data_types = mock_datatypes
+    mock_skl2onnx.common = mock_common
+
+    monkeypatch.setitem(sys.modules, "skl2onnx", mock_skl2onnx)
+    monkeypatch.setitem(sys.modules, "skl2onnx.common", mock_common)
+    monkeypatch.setitem(sys.modules, "skl2onnx.common.data_types", mock_datatypes)
+
+    from src.export.exporter import _save_model_to_onnx
+
+    with pytest.raises(ImportError, match="ml_dtypes"):
+        _save_model_to_onnx(DummyModel(), ["Realistic", "Investigative"], tmp_path / "out.onnx")
+
+
 def test_export_frontend_artifacts_writes_onnx_and_json(tmp_path, monkeypatch):
     train_data = pd.DataFrame([
         {
@@ -196,6 +225,247 @@ def test_export_frontend_artifacts_writes_onnx_and_json(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "skl2onnx.common.data_types", mock_datatypes)
 
     output_dir = tmp_path / "exported"
+    export_paths = export_frontend_artifacts(config, output_dir)
+
+    assert export_paths["onnx_model"].exists()
+    assert export_paths["frontend_db"].exists()
+    assert export_paths["export_package"].exists()
+
+    assert export_paths["onnx_model"].read_bytes() == b"mock-onnx"
+
+    loaded = json.loads(export_paths["frontend_db"].read_text())
+    assert isinstance(loaded, list)
+    assert loaded[0]["Title"] == "Software Developer"
+
+
+def test_export_frontend_artifacts_logs_progress_messages(tmp_path, monkeypatch, capsys):
+    train_data = pd.DataFrame([
+        {
+            "Realistic": 1.0,
+            "Investigative": 2.0,
+            "Artistic": 3.0,
+            "Social": 4.0,
+            "Enterprising": 5.0,
+            "Conventional": 6.0,
+            "Career Category": "Science",
+        },
+        {
+            "Realistic": 2.0,
+            "Investigative": 1.0,
+            "Artistic": 4.0,
+            "Social": 3.0,
+            "Enterprising": 6.0,
+            "Conventional": 5.0,
+            "Career Category": "Arts",
+        }
+    ])
+    frontend_data = pd.DataFrame([
+        {
+            "O*NET-SOC Code": "15-1121.00",
+            "Title": "Software Developer",
+            "Career Category": "Science",
+            "Realistic": 1.0,
+            "Investigative": 2.0,
+            "Artistic": 3.0,
+            "Social": 4.0,
+            "Enterprising": 5.0,
+            "Conventional": 6.0,
+        }
+    ])
+
+    train_csv = tmp_path / "train.csv"
+    frontend_csv = tmp_path / "frontend.csv"
+    train_data.to_csv(train_csv, index=False)
+    frontend_data.to_csv(frontend_csv, index=False)
+
+    config = {
+        "onet_db_path": str(frontend_csv),
+        "datasets": [
+            {
+                "name": "test_dataset",
+                "enabled": True,
+                "train_path": str(train_csv),
+            }
+        ],
+        "models": [
+            {
+                "model": "gradient_boosting",
+                "enabled": True,
+                "parameters": {
+                    "n_estimators": 1,
+                    "learning_rate": 0.1,
+                    "max_depth": 1,
+                    "top_n_categories": 1,
+                },
+                "x_features": [
+                    "Realistic",
+                    "Investigative",
+                    "Artistic",
+                    "Social",
+                    "Enterprising",
+                    "Conventional",
+                ],
+                "y_features": ["Career Category"],
+            }
+        ],
+        "evaluation": {
+            "top_k": 1,
+        },
+        "output": {
+            "directory": str(tmp_path / "output"),
+        },
+        "export": {
+            "export_inference_model": True,
+            "format": "onnx",
+            "verify_package": False,
+        },
+    }
+
+    class MockOnnx:
+        def SerializeToString(self):
+            return b"mock-onnx"
+
+    class MockConvertModule:
+        @staticmethod
+        def convert_sklearn(model, initial_types):
+            return MockOnnx()
+
+    class MockFloatTensorType:
+        def __init__(self, shape):
+            self.shape = shape
+
+    mock_skl2onnx = type(sys)("skl2onnx")
+    mock_skl2onnx.convert_sklearn = MockConvertModule.convert_sklearn
+    mock_common = type(sys)("skl2onnx.common")
+    mock_datatypes = type(sys)("skl2onnx.common.data_types")
+    mock_datatypes.FloatTensorType = MockFloatTensorType
+    mock_common.data_types = mock_datatypes
+    mock_skl2onnx.common = mock_common
+    monkeypatch.setitem(sys.modules, "skl2onnx", mock_skl2onnx)
+    monkeypatch.setitem(sys.modules, "skl2onnx.common", mock_common)
+    monkeypatch.setitem(sys.modules, "skl2onnx.common.data_types", mock_datatypes)
+
+    output_dir = tmp_path / "exported"
+    export_paths = export_frontend_artifacts(config, output_dir)
+    captured = capsys.readouterr()
+    assert "Starting export of frontend inference artifacts" in captured.out
+    assert "Exporting ONNX model to:" in captured.out
+    assert "Writing frontend JSON database to:" in captured.out
+    assert "Packaging export artifacts to:" in captured.out
+
+    assert export_paths["onnx_model"].exists()
+    assert export_paths["frontend_db"].exists()
+    assert export_paths["export_package"].exists()
+
+
+def test_export_frontend_artifacts_accepts_normalized_training_columns(tmp_path, monkeypatch):
+    train_data = pd.DataFrame([
+        {
+            "R normalized": 1.0,
+            "I normalized": 2.0,
+            "A normalized": 3.0,
+            "S normalized": 4.0,
+            "E normalized": 5.0,
+            "C normalized": 6.0,
+            "Career Category": "Science",
+        },
+        {
+            "R normalized": 2.0,
+            "I normalized": 1.0,
+            "A normalized": 4.0,
+            "S normalized": 3.0,
+            "E normalized": 6.0,
+            "C normalized": 5.0,
+            "Career Category": "Arts",
+        }
+    ])
+    frontend_data = pd.DataFrame([
+        {
+            "O*NET-SOC Code": "15-1121.00",
+            "Title": "Software Developer",
+            "Career Category": "Science",
+            "Realistic": 1.0,
+            "Investigative": 2.0,
+            "Artistic": 3.0,
+            "Social": 4.0,
+            "Enterprising": 5.0,
+            "Conventional": 6.0,
+        }
+    ])
+
+    train_csv = tmp_path / "train_normalized.csv"
+    frontend_csv = tmp_path / "frontend.csv"
+    train_data.to_csv(train_csv, index=False)
+    frontend_data.to_csv(frontend_csv, index=False)
+
+    config = {
+        "onet_db_path": str(frontend_csv),
+        "datasets": [
+            {
+                "name": "test_dataset",
+                "enabled": True,
+                "train_path": str(train_csv),
+            }
+        ],
+        "models": [
+            {
+                "model": "gradient_boosting",
+                "enabled": True,
+                "parameters": {
+                    "n_estimators": 1,
+                    "learning_rate": 0.1,
+                    "max_depth": 1,
+                    "top_n_categories": 1,
+                },
+                "x_features": [
+                    "Realistic",
+                    "Investigative",
+                    "Artistic",
+                    "Social",
+                    "Enterprising",
+                    "Conventional",
+                ],
+                "y_features": ["Career Category"],
+            }
+        ],
+        "evaluation": {
+            "top_k": 1,
+        },
+        "output": {
+            "directory": str(tmp_path / "output"),
+        },
+        "export": {
+            "export_inference_model": True,
+            "format": "onnx",
+            "verify_package": False,
+        },
+    }
+
+    class MockOnnx:
+        def SerializeToString(self):
+            return b"mock-onnx"
+
+    class MockConvertModule:
+        @staticmethod
+        def convert_sklearn(model, initial_types):
+            return MockOnnx()
+
+    class MockFloatTensorType:
+        def __init__(self, shape):
+            self.shape = shape
+
+    mock_skl2onnx = type(sys)("skl2onnx")
+    mock_skl2onnx.convert_sklearn = MockConvertModule.convert_sklearn
+    mock_common = type(sys)("skl2onnx.common")
+    mock_datatypes = type(sys)("skl2onnx.common.data_types")
+    mock_datatypes.FloatTensorType = MockFloatTensorType
+    mock_common.data_types = mock_datatypes
+    mock_skl2onnx.common = mock_common
+    monkeypatch.setitem(sys.modules, "skl2onnx", mock_skl2onnx)
+    monkeypatch.setitem(sys.modules, "skl2onnx.common", mock_common)
+    monkeypatch.setitem(sys.modules, "skl2onnx.common.data_types", mock_datatypes)
+
+    output_dir = tmp_path / "exported_normalized"
     export_paths = export_frontend_artifacts(config, output_dir)
 
     assert export_paths["onnx_model"].exists()

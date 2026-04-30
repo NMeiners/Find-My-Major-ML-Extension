@@ -11,6 +11,7 @@ Artifacts are written into the experiment `output.directory` run folder.
 
 ## Integration
 - `main.py` calls `src.export.export_frontend_artifacts()` when `export.export_inference_model` is enabled.
+- `src/scripts/export_for_frontend.py` provides a CLI wrapper for exporting artifacts from a YAML experiment config.
 - The module reads the first enabled dataset and model from the experiment config.
 - The module relies on `src.models.MODEL_REGISTRY` so the same model contract is used by evaluation and export.
 
@@ -37,7 +38,10 @@ export:
 ```
 
 ## Notes
-- ONNX export depends on `skl2onnx`.
+- ONNX export depends on `skl2onnx`, `onnx`, and a compatible `ml_dtypes` package.
+- Install the validated export dependency set with:
+  `python -m pip install "onnx>=1.20,<1.22" "skl2onnx>=1.20,<1.21" "ml_dtypes>=0.5.3,<0.6"`
+- On Python 3.13 and later, this export stack may also require `numpy>=2.1,<3` to satisfy the `ml_dtypes` dependency.
 - Runtime errors are raised if required data files or model configuration are missing.
 - If `export.save_model_artifact` is enabled, the trained model is also persisted to `models/` inside the run folder.
 - The export package includes the ONNX model, career JSON database, and a package manifest.

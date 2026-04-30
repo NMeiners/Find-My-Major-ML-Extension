@@ -85,10 +85,11 @@ def build_riasec_model():
     try:
         from skl2onnx import convert_sklearn
         from skl2onnx.common.data_types import FloatTensorType
-    except ImportError as exc:
+    except (ImportError, AttributeError) as exc:
         raise ImportError(
-            "skl2onnx is required to export the model to ONNX. "
-            "Install skl2onnx or run build_riasec_model in an environment where it is available."
+            "Exporting to ONNX requires compatible skl2onnx and onnx packages. "
+            "Install or upgrade them with: "
+            "python -m pip install 'onnx>=1.15,<2' 'skl2onnx>=1.16,<2'"
         ) from exc
 
     initial_type = [('float_input', FloatTensorType([None, 6]))]

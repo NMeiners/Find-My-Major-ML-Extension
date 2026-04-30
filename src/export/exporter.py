@@ -56,6 +56,14 @@ EXPORT_DB_FILENAME = "riasec_jobs_db.json"
 EXPORT_MANIFEST_FILENAME = "package_manifest.json"
 DEFAULT_EXPORT_FORMAT = "onnx"
 REQUIRED_FRONTEND_COLUMNS = ["O*NET-SOC Code", "Title"]
+TRAINING_COLUMN_ALIAS_MAP = {
+    "Realistic": "R normalized",
+    "Investigative": "I normalized",
+    "Artistic": "A normalized",
+    "Social": "S normalized",
+    "Enterprising": "E normalized",
+    "Conventional": "C normalized",
+}
 
 
 class ExporterError(Exception):
@@ -96,6 +104,8 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    print("Starting export of frontend inference artifacts...", flush=True)
+
     dataset_config = _get_first_enabled_dataset(config)
     model_config = _get_first_enabled_model(config)
     train_path = dataset_config.get('train_path')
@@ -105,6 +115,15 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
     if not train_path.is_file():
         raise FileNotFoundError(f"Training dataset file not found: {train_path}")
 
+    print(f"Reading training data from: {train_path}", flush=True)
+    training_df = pd.read_csv(train_path)
+    training_df = _normalize_training_dataframe_columns(training_df, model_config.get('x_features', []))
+    print(
+        "Training dataset columns after normalization: "
+        f"{list(training_df.columns)}",
+        flush=True,
+    )
+
     onet_db_path = config.get('onet_db_path')
     if not onet_db_path:
         raise KeyError("Configuration missing 'onet_db_path'.")
@@ -112,9 +131,9 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
     if not onet_db_path.is_file():
         raise FileNotFoundError(f"O*NET DB file not found: {onet_db_path}")
 
-    training_df = pd.read_csv(train_path)
     frontend_df = pd.read_csv(onet_db_path)
 
+    print(f"Building export model '{model_config.get('model')}'", flush=True)
     model = _build_model_from_config(model_config, config)
     y_feature = model_config['y_features'][0]
     if y_feature not in training_df.columns:
@@ -128,6 +147,7 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
             f"Training dataset missing required feature columns: {missing_features}"
         )
 
+    print(f"Training export model with features: {model.x_features}", flush=True)
     model.train(training_df[model.x_features], training_df[y_feature])
     sklearn_estimator = _get_wrapped_sklearn_estimator(model)
 
@@ -144,13 +164,16 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
         )
 
     onnx_path = output_path / EXPORT_MODEL_FILENAME
+    print(f"Exporting ONNX model to: {onnx_path}", flush=True)
     _save_model_to_onnx(sklearn_estimator, model.x_features, onnx_path)
 
     json_path = output_path / EXPORT_DB_FILENAME
+    print(f"Writing frontend JSON database to: {json_path}", flush=True)
     _save_frontend_json(frontend_df, model.x_features, y_feature, json_path)
 
     package_name = export_cfg.get('package_name', 'riasec_export_package.zip')
     package_path = output_path / package_name
+    print(f"Packaging export artifacts to: {package_path}", flush=True)
     _package_exported_artifacts(
         onnx_path=onnx_path,
         json_path=json_path,
@@ -161,7 +184,9 @@ def export_frontend_artifacts(config: dict[str, Any], output_dir: Path | str) ->
     )
 
     if export_cfg.get('verify_package', True):
+        print("Verifying export package...", flush=True)
         _verify_export_package(package_path)
+        print("Export package verification complete.", flush=True)
 
     upload_script = export_cfg.get('upload_script')
     upload_args = export_cfg.get('upload_arguments', [])
@@ -230,6 +255,30 @@ def _get_wrapped_sklearn_estimator(model: Any) -> Any:
     )
 
 
+def _normalize_training_dataframe_columns(
+    training_df: pd.DataFrame,
+    x_features: list[str],
+) -> pd.DataFrame:
+    if set(x_features).issubset(training_df.columns):
+        return training_df
+
+    rename_map: dict[str, str] = {}
+    for feature in x_features:
+        alternate = TRAINING_COLUMN_ALIAS_MAP.get(feature)
+        if alternate and alternate in training_df.columns:
+            rename_map[alternate] = feature
+
+    if rename_map:
+        print(
+            "Normalizing training dataset column aliases: "
+            f"{rename_map}",
+            flush=True,
+        )
+        training_df = training_df.rename(columns=rename_map)
+
+    return training_df
+
+
 def _save_trained_model_artifact(sklearn_model: Any, output_path: Path, model_name: str) -> Path:
     from joblib import dump
 
@@ -241,17 +290,63 @@ def _save_trained_model_artifact(sklearn_model: Any, output_path: Path, model_na
 
 
 def _save_model_to_onnx(sklearn_model: Any, feature_columns: list[str], output_path: Path) -> None:
+    python_version_note = ""
+    if sys.version_info >= (3, 13):
+        python_version_note = (
+            "On Python 3.13+ this stack may also require numpy>=2.1,<3. "
+            "If your environment pins numpy <2, update it before installing ONNX export dependencies.\n"
+        )
+
     try:
         from skl2onnx import convert_sklearn
         from skl2onnx.common.data_types import FloatTensorType
-    except ImportError as exc:
-        raise ImportError(
-            "Exporting to ONNX requires the skl2onnx package. "
-            "Install skl2onnx before running export."
-        ) from exc
+    except (ImportError, AttributeError) as exc:
+        message = (
+            "Exporting to ONNX requires compatible skl2onnx, onnx, and ml_dtypes packages. "
+            "A mismatch was detected while importing the ONNX export dependencies. "
+        )
+        if "ml_dtypes" in str(exc) or "float4_e2m1fn" in str(exc):
+            message += (
+                "This appears to be caused by an incompatible ml_dtypes/onnx combination. "
+                "Install a validated set of versions with:\n"
+                "  python -m pip install \"onnx>=1.20,<1.22\" \"skl2onnx>=1.20,<1.21\" \"ml_dtypes>=0.5.3,<0.6\"\n"
+                f"{python_version_note}"
+                "or use the repository environment requirements."
+            )
+        else:
+            message += (
+                "Install a validated set of versions with:\n"
+                "  python -m pip install \"onnx>=1.20,<1.22\" \"skl2onnx>=1.20,<1.21\" \"ml_dtypes>=0.5.3,<0.6\"\n"
+                f"{python_version_note}"
+                "or use the repository environment requirements."
+            )
+        raise ImportError(message) from exc
 
     initial_type = [('float_input', FloatTensorType([None, len(feature_columns)]))]
-    onx = convert_sklearn(sklearn_model, initial_types=initial_type)
+    try:
+        onx = convert_sklearn(sklearn_model, initial_types=initial_type)
+    except (ImportError, AttributeError) as exc:
+        message = (
+            "Exporting to ONNX requires compatible skl2onnx, onnx, and ml_dtypes packages. "
+            "A mismatch was detected while converting the model to ONNX. "
+        )
+        if "ml_dtypes" in str(exc) or "float4_e2m1fn" in str(exc):
+            message += (
+                "This appears to be caused by an incompatible ml_dtypes/onnx combination. "
+                "Install a validated set of versions with:\n"
+                "  python -m pip install \"onnx>=1.20,<1.22\" \"skl2onnx>=1.20,<1.21\" \"ml_dtypes>=0.5.3,<0.6\"\n"
+                f"{python_version_note}"
+                "or use the repository environment requirements."
+            )
+        else:
+            message += (
+                "Install a validated set of versions with:\n"
+                "  python -m pip install \"onnx>=1.20,<1.22\" \"skl2onnx>=1.20,<1.21\" \"ml_dtypes>=0.5.3,<0.6\"\n"
+                f"{python_version_note}"
+                "or use the repository environment requirements."
+            )
+        raise ImportError(message) from exc
+
     with open(output_path, 'wb') as model_file:
         model_file.write(onx.SerializeToString())
 

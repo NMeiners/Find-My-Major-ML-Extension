@@ -52,7 +52,7 @@ The pipeline will:
 
 ### Optional Export
 
-To export frontend inference assets, enable the appropriate export flags in your configuration or use the repository export utilities in `src/export/` and `scripts/export_for_frontend.py`.
+To export frontend inference assets, enable the appropriate export flags in your configuration or use the repository export utilities in `src/export/` and `src/scripts/export_for_frontend.py`.
 
 ## Testing
 
