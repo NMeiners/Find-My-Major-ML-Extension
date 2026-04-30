@@ -6,7 +6,7 @@
 experiment:
   id: exp_production_v1
   description: Production deployment run for 6-feature Gradient Boosting model
-  author: team_member
+  author: Nathan Groshek
   created: 2026-04-11
   random_seed: 42
 
