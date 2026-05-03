@@ -98,11 +98,10 @@ These documents describe the intended architecture, development conventions, and
 
 ## Status
 
-The repository is structured for research-driven development and reproducible experiment execution. Core runtime entry points, configuration handling, evaluation reporting, and artifact export scaffolding are implemented. Ongoing work focuses on expanding model implementations, data processing, and evaluation coverage.
+The repository is structured for research-driven development and reproducible experiment execution. Core runtime entry points, configuration handling, evaluation reporting, and artifact export scaffolding are implemented. Ongoing work focuses on expanding model implementations, data processing,evaluation coverage, and automation of data collection and export integration processes.
 
 ## Companion Website
 
-For reference and companion documentation, visit:
+For references, demos, and related repositories, visit:
 
 https://nmeiners.github.io/brand-new-repository/
-
