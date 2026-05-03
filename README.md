@@ -105,3 +105,8 @@ The repository is structured for research-driven development and reproducible ex
 For references, demos, and related repositories, visit:
 
 https://nmeiners.github.io/brand-new-repository/
+
+## AI Usage
+This repository encourages responsible AI usage. Please refer to `docs/ai_usage_policy.md` for guidelines on how to use AI tools effectively and ethically in your development process.
+
+All AI-generated code within this repository adheres to the guidelines outlined in the AI usage policy and is documented in code comments for transparency.
