@@ -514,6 +514,20 @@ class TestExperimentParallelExecution(unittest.TestCase):
         per_experiment_files = list((self.temp_dir / 'per_experiment').glob('*.json'))
         self.assertEqual(len(per_experiment_files), 2)
 
+    def test_output_path_parent_is_created_if_missing(self):
+        output_path = self.temp_dir / 'nested' / 'evaluation.json'
+        results = evaluate_experiment(
+            datasets=[],
+            models=[],
+            onet_db=pd.DataFrame(),
+            config=self.base_config,
+            output_path=output_path,
+        )
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(output_path.exists())
+        self.assertTrue((self.temp_dir / 'nested' / 'per_experiment').exists())
+
     def test_failed_job_does_not_stop_other_jobs(self):
         bad_dataset = {
             'name': 'broken_dataset',

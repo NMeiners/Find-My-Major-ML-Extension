@@ -5,7 +5,8 @@ Path: src/evaluation/evaluator.py
 Purpose:
   Orchestrates the evaluation loop across datasets and models. Manages the
   evaluation workflow including training, testing, metric computation, and
-  benchmarking. No metric logic is implemented here.
+  benchmarking. Delegates configuration resolution and result building to
+  specialized helper modules for improved modularity.
 
 Original Author(s):
   - AI Assistant (GitHub Copilot)
@@ -18,18 +19,20 @@ Editors:
   - AI Assistant (2026-03-30) — Added configurable metric selection enforcement
   - AI Assistant (2026-03-30) — Added evaluation contract checks and k-value validation
   - OpenAI Codex (2026-04-06) — Added ProcessPoolExecutor experiment-level parallelism
+  - AI Assistant (2026-04-20) — Refactored for modularity by extracting helpers
 
 Last Editor:
-  - OpenAI Codex
+  - AI Assistant
 
 Last Edit Date:
-  2026-04-06
+  2026-04-20
 
 Assumptions & Constraints:
   - Models implement BaseModel interface (train, test, get_name)
   - Dataset/model jobs come from config dataset/model matrices
   - Each worker process loads its own dataset and O*NET CSV
   - Evaluation results stored in experiments/results/<id>/evaluation.json
+  - Configuration resolution and result building delegated to helper modules
 
 Related Docs:
   - docs/src/evaluation/evaluation.md
@@ -38,7 +41,6 @@ Related Docs:
 
 import json
 import random
-import re
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -50,12 +52,17 @@ import pandas as pd
 from src.data.loader import load_training_records, split_training_records
 from src.data.schemas import TrainingRecord
 from src.evaluation.metrics import compute_all_metrics
-from src.evaluation.benchmark import benchmark_model_inference, get_model_size_mb
+from src.evaluation.benchmark import benchmark_model_inference
+from src.evaluation.config_resolution import (
+    resolve_parallel_jobs, resolve_metric_selection, validate_k_values,
+    resolve_top_k, filter_metric_results
+)
+from src.evaluation.result_builders import (
+    collect_prediction_contract_violations, merge_violation_counts,
+    build_model_result, sanitize_path_component, write_aggregate_results,
+    write_single_experiment_result, _REQUIRED_PREDICTION_COLUMNS
+)
 from src.models import MODEL_REGISTRY
-
-_SUPPORTED_METRICS = {"ndcg_at_k", "precision_at_k"}
-_REQUIRED_PREDICTION_COLUMNS = ("Title", "Career Category", "Match_Score")
-_DEFAULT_PARALLEL_JOBS = 2
 
 
 class EvaluationInterrupted(Exception):
@@ -64,21 +71,6 @@ class EvaluationInterrupted(Exception):
     def __init__(self, partial_result: Dict[str, Any]):
         super().__init__("Evaluation interrupted with partial model results.")
         self.partial_result = partial_result
-
-
-# Normalize configured worker count; defaults to a small safe process pool.
-def _resolve_parallel_jobs(config: Dict[str, Any]) -> int:
-    configured_jobs = config.get('training', {}).get('parallel_jobs', _DEFAULT_PARALLEL_JOBS)
-
-    if configured_jobs is None:
-        return _DEFAULT_PARALLEL_JOBS
-
-    if not isinstance(configured_jobs, int) or configured_jobs <= 0:
-        raise ValueError(
-            f"training.parallel_jobs must be a positive integer, got {configured_jobs!r}"
-        )
-
-    return configured_jobs
 
 
 # Build the dataset/model matrix used for experiment-level process parallelism.
@@ -126,39 +118,6 @@ def _resolve_model_name(model_config: Dict[str, Any], fallback_idx: int) -> str:
     if isinstance(configured_name, str) and configured_name.strip():
         return configured_name.strip()
     return f"model_{fallback_idx}"
-
-
-# Sanitize identifiers before using them in filesystem paths.
-def _sanitize_path_component(value: str) -> str:
-    sanitized = re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_")
-    return sanitized or "unknown"
-
-
-# Persist aggregate evaluation output in run-level evaluation.json.
-def _write_aggregate_results(results: List[Dict[str, Any]], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(results, f, indent=2, default=str)
-
-
-# Persist each dataset/model pair output as an individual JSON artifact.
-def _write_single_experiment_result(
-    result: Dict[str, Any],
-    output_path: Path,
-    run_id: str,
-    job_index: int,
-) -> None:
-    dataset_name = _sanitize_path_component(str(result.get('dataset', 'dataset')))
-    model_name = _sanitize_path_component(str(result.get('model', 'model')))
-    safe_run_id = _sanitize_path_component(run_id)
-
-    per_experiment_dir = output_path.parent / 'per_experiment'
-    file_name = f"{safe_run_id}_{job_index:03d}_{dataset_name}_{model_name}.json"
-    per_experiment_path = per_experiment_dir / file_name
-
-    per_experiment_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(per_experiment_path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, indent=2, default=str)
 
 
 # Instantiate a model from one config row and enforce nested-parallelism safety.
@@ -235,110 +194,54 @@ def _build_dataset_from_config(
     )
 
 
-# Normalize configured metric names into the supported evaluator metric set.
+# ============================================================================
+# Wrapper functions maintaining backward-compatible underscore-prefixed names
+# while delegating to imported helper modules. This preserves evaluator.py as
+# the orchestration layer without duplicating code across modules.
+# ============================================================================
+
+def _resolve_parallel_jobs(config: Dict[str, Any]) -> int:
+    """Delegate to config_resolution module."""
+    return resolve_parallel_jobs(config)
+
+
 def _resolve_metric_selection(config: Dict[str, Any]) -> set[str]:
-    evaluation_cfg = config.get("evaluation", {})
-    configured = evaluation_cfg.get("metrics")
-
-    if configured is None:
-        return set(_SUPPORTED_METRICS)
-
-    selected = set(configured)
-    unsupported = selected - _SUPPORTED_METRICS
-    if unsupported:
-        unsupported_str = ", ".join(sorted(unsupported))
-        supported_str = ", ".join(sorted(_SUPPORTED_METRICS))
-        raise ValueError(
-            f"Unsupported evaluation metric(s): {unsupported_str}. "
-            f"Supported metrics: {supported_str}"
-        )
-
-    return selected
+    """Delegate to config_resolution module."""
+    return resolve_metric_selection(config)
 
 
-# Filter computed metric outputs based on configured metric families.
 def _filter_metric_results(
     metric_results: Dict[str, Any],
     selected_metrics: set[str],
 ) -> Dict[str, Any]:
-    filtered: Dict[str, Any] = {}
-
-    for key, value in metric_results.items():
-        if key.startswith("ndcg@") and "ndcg_at_k" in selected_metrics:
-            filtered[key] = value
-        elif key.startswith("precision@") and "precision_at_k" in selected_metrics:
-            filtered[key] = value
-
-    return filtered
+    """Delegate to config_resolution module."""
+    return filter_metric_results(metric_results, selected_metrics)
 
 
 def _validate_k_values(k_values: Any, top_k: int) -> list[int]:
-    if not isinstance(top_k, int) or top_k <= 0:
-        raise ValueError(f"evaluation.top_k must be a positive integer, got {top_k!r}")
-
-    if not isinstance(k_values, list) or not k_values:
-        raise ValueError("evaluation.k_values must be a non-empty list of positive integers")
-
-    normalized: list[int] = []
-    for value in k_values:
-        if not isinstance(value, int) or value <= 0:
-            raise ValueError(
-                f"evaluation.k_values must contain only positive integers, got {value!r}"
-            )
-        if value > top_k:
-            raise ValueError(
-                f"evaluation.k_values contains {value}, which exceeds evaluation.top_k={top_k}. "
-                "Use k_values <= top_k so metrics reflect returned recommendations."
-            )
-        normalized.append(value)
-
-    return normalized
+    """Delegate to config_resolution module."""
+    return validate_k_values(k_values, top_k)
 
 
 def _resolve_top_k(evaluation_cfg: Dict[str, Any], model: Any) -> int:
-    configured_top_k = evaluation_cfg.get("top_k")
-    if configured_top_k is not None:
-        if not isinstance(configured_top_k, int) or configured_top_k <= 0:
-            raise ValueError(
-                f"evaluation.top_k must be a positive integer, got {configured_top_k!r}"
-            )
-        return configured_top_k
-
-    model_top_n_jobs = getattr(model, "top_n_jobs", None)
-    if isinstance(model_top_n_jobs, int) and model_top_n_jobs > 0:
-        return model_top_n_jobs
-
-    return 5
+    """Delegate to config_resolution module."""
+    return resolve_top_k(evaluation_cfg, model)
 
 
 def _collect_prediction_contract_violations(
     predictions: pd.DataFrame,
     top_n_jobs: int,
 ) -> Dict[str, int]:
-    violations: Dict[str, int] = {}
-
-    if len(predictions) > top_n_jobs:
-        violations["row_count_exceeds_top_n_jobs"] = 1
-
-    null_in_required = int(predictions[list(_REQUIRED_PREDICTION_COLUMNS)].isnull().any().any())
-    if null_in_required:
-        violations["null_in_required_columns"] = 1
-
-    scores = pd.to_numeric(predictions["Match_Score"], errors="coerce")
-    if scores.isnull().any():
-        violations["non_numeric_match_score"] = 1
-    elif ((scores < 0.0) | (scores > 1.0)).any():
-        violations["match_score_out_of_range"] = 1
-
-    return violations
+    """Delegate to result_builders module."""
+    return collect_prediction_contract_violations(predictions, top_n_jobs)
 
 
 def _merge_violation_counts(
     aggregate: Dict[str, int],
     sample_violations: Dict[str, int],
 ) -> None:
-    for key, value in sample_violations.items():
-        aggregate[key] = aggregate.get(key, 0) + value
+    """Delegate to result_builders module."""
+    return merge_violation_counts(aggregate, sample_violations)
 
 
 def _build_model_result(
@@ -349,25 +252,31 @@ def _build_model_result(
     constraint_violations: Dict[str, int],
     samples_evaluated: int,
 ) -> Dict[str, Any]:
-    if not all_metrics:
-        raise ValueError("No test samples were evaluated. Check max_test_samples and test dataset size.")
+    """Delegate to result_builders module."""
+    return build_model_result(
+        all_metrics, latencies, memory_usages, model,
+        constraint_violations, samples_evaluated
+    )
 
-    avg_metrics: Dict[str, float] = {}
-    for key in all_metrics[0].keys():
-        avg_metrics[key] = sum(m[key] for m in all_metrics) / len(all_metrics)
 
-    avg_latency = sum(latencies) / len(latencies)
-    avg_memory = sum(memory_usages) / len(memory_usages)
-    model_size = get_model_size_mb(model)
+def _sanitize_path_component(value: str) -> str:
+    """Delegate to result_builders module."""
+    return sanitize_path_component(value)
 
-    return {
-        'metrics': avg_metrics,
-        'latency_ms': avg_latency,
-        'memory_bytes': avg_memory,
-        'model_size_mb': model_size,
-        'constraint_violations': constraint_violations,
-        'samples_evaluated': samples_evaluated,
-    }
+
+def _write_aggregate_results(results: List[Dict[str, Any]], output_path: Path) -> None:
+    """Delegate to result_builders module."""
+    return write_aggregate_results(results, output_path)
+
+
+def _write_single_experiment_result(
+    result: Dict[str, Any],
+    output_path: Path,
+    run_id: str,
+    job_index: int,
+) -> None:
+    """Delegate to result_builders module."""
+    return write_single_experiment_result(result, output_path, run_id, job_index)
 
 
 class Dataset:

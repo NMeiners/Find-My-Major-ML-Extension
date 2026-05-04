@@ -18,12 +18,13 @@ Editors:
   - AI Assistant (2026-03-20) — Added config-driven model training loop
   - AI Assistant (2026-03-30) — Added deterministic seed initialization and output flag warnings
   - OpenAI Codex (2026-04-06) — Delegated dataset/model execution to evaluator multiprocessing workers
+  - AI Assistant (2026-04-13) — Added visual_output flag support via generate_visualizations
 
 Last Editor:
-  - OpenAI Codex
+  - AI Assistant
 
 Last Edit Date:
-  2026-04-06
+  2026-04-13
 
 Assumptions & Constraints:
   - Executed from repository root
@@ -47,6 +48,8 @@ import numpy as np
 from src.config.config_loader import load_config
 from src.evaluation import evaluate_experiment
 from src.evaluation.reporting import save_results_to_file, save_results_to_csv
+from src.evaluation.visualization import generate_visualizations
+from src.export import export_frontend_artifacts
 
 
 def main():
@@ -168,6 +171,18 @@ def main():
             "Warning: output.save_predictions=true but per-sample prediction "
             "persistence is not implemented in this pipeline."
         )
+
+    if config.get('export', {}).get('export_inference_model', False):
+        print("Exporting frontend inference artifacts ...")
+        export_paths = export_frontend_artifacts(config, output_dir)
+        print(
+            f"Frontend artifacts written to: {export_paths['onnx_model']} "
+            f"and {export_paths['frontend_db']}"
+        )
+
+    if config['output'].get('visual_output', False):
+        print("Generating visualizations ...")
+        generate_visualizations(output_dir)
 
     print(f"\nExperiment complete. Total results: {len(evaluation_results)}")
 
